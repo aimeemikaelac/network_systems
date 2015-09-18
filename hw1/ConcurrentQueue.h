@@ -1,0 +1,63 @@
+/*
+ * ConcurrentQueue.h
+ *
+ *  Created on: Sep 17, 2015
+ *      Author: michael
+ */
+
+#ifndef CONCURRENTQUEUE_H_
+#define CONCURRENTQUEUE_H_
+
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <pthread.h>
+#include <string.h>
+#include <iostream>
+#include <fstream>
+
+struct QueueItem{
+	std::string request;
+	bool keep_alive;
+	QueueItem *next;
+};
+
+struct Queue{
+	//adapted from locked queue from book, chapter 8
+	pthread_mutex_t *lock;
+	pthread_cond_t *notFull;
+	pthread_cond_t *notEmpty;
+	struct QueueItem *head;
+	struct QueueItem *tail;
+	int count;
+	int keepAlive;
+};
+
+typedef struct Queue Queue;
+typedef struct QueueItem QueueItem;
+
+class ConcurrentQueue {
+public:
+	ConcurrentQueue();
+	virtual ~ConcurrentQueue();
+//	std::string pop();
+	QueueItem* pop();
+	void push(std::string data, bool keep_alive);
+	int getSize();
+	void toggleQueue();
+	void wakeQueue();
+private:
+	void enq(QueueItem* start, QueueItem* end, int newItems, Queue *queue);
+//	QueueItem* deq(Queue *queue, int *wait, int id, int numToFetch);
+	QueueItem* deq(Queue *queue, int numToFetch);
+	void wake_queue(Queue *queue);
+	void toggle_queue(Queue *queue);
+	Queue* queue_init();
+	void queue_destroy(Queue *queue);
+
+	Queue *head;
+
+
+};
+
+#endif /* CONCURRENTQUEUE_H_ */
