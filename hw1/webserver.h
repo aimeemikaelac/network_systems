@@ -1,4 +1,8 @@
 //Webserver.h
+//Author: Michael Coughlin
+#ifndef WEBSERVER_H_
+#define WEBSERVER_H_
+
 #include <iostream>
 #include <fstream>
 #include <set>
@@ -15,8 +19,34 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <stdlib.h>
+
+#include "webserver_util.h"
 #include "ConcurrentQueue.h"
 
+//use the maximum size of a request that is supported by most web servers
+//theroetically
+#define MAX_REQUEST_SIZE 8192
+
+struct connectionArgs{
+	int thread_id;
+	int connection_fd;
+	std::string documentRoot;
+	std::set<std::string> documentIndex;
+	std::map<std::string, std::string> contentTypes;
+};
+
+struct workerArgs{
+	int socket_fd;
+	std::string documentRoot;
+	std::set<std::string> documentIndex;
+	std::map<std::string, std::string> contentTypes;
+	ConcurrentQueue *workQueue;
+	volatile bool continue_processing;
+	volatile bool flush_queue;
+	volatile bool workerEndConnection;
+	pthread_mutex_t *lock;
+	pthread_mutex_t *worker_end_lock;
+};
 
 class Webserver{
 	public:
@@ -41,3 +71,5 @@ class Webserver{
 		std::map<std::string, std::string> contentTypes;
 		unsigned servicePort;
 };
+
+#endif

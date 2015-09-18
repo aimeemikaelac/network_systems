@@ -2,7 +2,7 @@
  * ConcurrentQueue.h
  *
  *  Created on: Sep 17, 2015
- *      Author: michael
+ *      Author: Michael Coughlin
  */
 
 #ifndef CONCURRENTQUEUE_H_
@@ -48,7 +48,6 @@ public:
 	void wakeQueue();
 private:
 	void enq(QueueItem* start, QueueItem* end, int newItems, Queue *queue);
-//	QueueItem* deq(Queue *queue, int *wait, int id, int numToFetch);
 	QueueItem* deq(Queue *queue, int numToFetch);
 	void wake_queue(Queue *queue);
 	void toggle_queue(Queue *queue);

@@ -5,21 +5,24 @@
 # Add inputs and outputs from these tool invocations to the build variables 
 CPP_SRCS += \
 ../ConcurrentQueue.cpp \
-../webserver.cpp 
+../webserver.cpp \
+../webserver_util.cpp 
 
 C_SRCS += \
 ../webserver.c 
 
 OBJS += \
 ./ConcurrentQueue.o \
-./webserver.o 
+./webserver.o \
+./webserver_util.o 
 
 C_DEPS += \
 ./webserver.d 
 
 CPP_DEPS += \
 ./ConcurrentQueue.d \
-./webserver.d 
+./webserver.d \
+./webserver_util.d 
 
 
 # Each subdirectory must supply rules for building sources it contributes

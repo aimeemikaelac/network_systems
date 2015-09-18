@@ -2,7 +2,7 @@
  * ConcurrentQueue.cpp
  *
  *  Created on: Sep 17, 2015
- *      Author: michael
+ *      Author: Michael Coughlin
  */
 
 #include "ConcurrentQueue.h"
@@ -10,13 +10,10 @@
 using namespace std;
 
 ConcurrentQueue::ConcurrentQueue() {
-	// TODO Auto-generated constructor stub
 	head = queue_init();
-	cout << "Created new queue" << endl;
 }
 
 ConcurrentQueue::~ConcurrentQueue() {
-	// TODO Auto-generated destructor stub
 	queue_destroy(head);
 }
 
@@ -55,7 +52,7 @@ Queue* ConcurrentQueue::queue_init(){
 void ConcurrentQueue::queue_destroy(Queue *queue){
 	QueueItem *temp;
 	pthread_mutex_lock(queue->lock);
-	queue->count = 0;
+
 	queue->keepAlive = 0;
 	while(queue->head){
 		temp = queue->head;
@@ -63,6 +60,13 @@ void ConcurrentQueue::queue_destroy(Queue *queue){
 		free(temp);
 
 	}
+//	int i;
+//	for(i=0; i<queue->count; i++){
+//		temp = queue->head;
+//		queue->head = queue->head->next;
+//		free(temp);
+//	}
+	queue->count = 0;
 
 	pthread_mutex_unlock(queue->lock);
 	pthread_mutex_destroy(queue->lock);
@@ -73,20 +77,7 @@ void ConcurrentQueue::queue_destroy(Queue *queue){
 }
 
 void ConcurrentQueue::enq(QueueItem* start, QueueItem* end, int newItems, Queue *queue){
-	/*QueueItem *item = NULL;
-	item = malloc(sizeof(QueueItem));
-
-	if(!item){
-		printf("could not allocate queue item\n");
-		exit(-1);
-	}
-
-	item->schema = schema;
-	item->next = NULL;
-	*/
-
 	pthread_mutex_lock(queue->lock);
-	//printf("enqueuing %d items in method with starting count %d\n", newItems, queue->count);
 	if(queue->tail){
 		queue->tail->next = start;
 	}
@@ -98,7 +89,6 @@ void ConcurrentQueue::enq(QueueItem* start, QueueItem* end, int newItems, Queue 
 
 	queue->count += newItems;
 
-	//printf("ending count %d with head %p start %p tail %p end %p\n", queue->count, queue->head, start, queue->tail, end);
 	pthread_cond_signal(queue->notEmpty);
 	pthread_mutex_unlock(queue->lock);
 
@@ -110,38 +100,49 @@ QueueItem* ConcurrentQueue::deq(Queue *queue, int numToFetch){
 	QueueItem *item;
 	QueueItem *last;
 
-	if(!queue->keepAlive){
-		return NULL;
-	}
 	int i;
 	pthread_mutex_lock(queue->lock);
 	while(queue->keepAlive && queue->count <= 0){
-		//printf("waiting with flag: %d and count: %d, system id: %d\n", *wait, queue->count, id);
-		cout << "Waiting in deq" <<endl;
 		pthread_cond_wait(queue->notEmpty, queue->lock);
-		cout << "Waiting finished in deq" << endl;
+	}
+	if(numToFetch > queue->count){
+		return NULL;
+	}
+	if(!queue->keepAlive){
+		return NULL;
 	}
 
 	if(!queue->keepAlive){
-		//printf("exited with id %d\n", id);
-
 		item = NULL;
 	} else{
 
 		item = queue->head;
 		last = item;
 		for(i = 0; queue->count>0 && i<numToFetch; i++){
-			queue->head = queue->head->next;
+//			if(queue->head == NULL){
+//				cout << "Head is null" <<endl;
+//				return NULL;
+//			}
+//			else if((queue->head->next) == NULL){
+//				cout << "Head.next is null" <<endl;
+//				return NULL;
+//			}
+//			cout << "Queue: " << queue << endl;
+//			cout << "Queue head: " << queue->head << endl;
+//			cout << "Queue head next: " << queue->head->next <<endl;
+			if(queue -> head != NULL){ //&& queue->head->next != NULL){
+				queue->head = queue->head->next;
 
-			queue->count--;
+				queue->count--;
+			} else{
+				break;
+			}
 
 		}
 		while(last->next != queue->head){
 			last = last->next;
 		}
 		last->next = NULL;
-
-		//printf("count: %d, flag: %d thread id: %d numToFetch: %d dequeued: %d and head: %p\n", queue->count, *wait, id, numToFetch, i, queue->head);
 
 		if(queue->count == 0){
 			queue->tail = NULL;
@@ -158,32 +159,28 @@ int ConcurrentQueue::getSize(){
 }
 
 void ConcurrentQueue::push(string data, bool keep_alive){
-
+	cout << "attempting to push" <<endl;
+	void* raw = malloc(sizeof(QueueItem));
 	QueueItem *new_item;
-	new_item = new QueueItem;//(QueueItem*)malloc(sizeof(QueueItem));
+	new_item = new(raw) QueueItem;
 
 	new_item->request = data;
-	cout << "In push method" << endl;
 	new_item->keep_alive = keep_alive;
 
+	//IMPORTANT: need to set next to NULL or there may be a seg fault
+	new_item->next = NULL;
+
 	enq(new_item, new_item, 1, head);
-	cout << "Done with push method. Pushed: " << data << " in struct: " << new_item->request << endl;
+//	wakeQueue();
 }
 
 QueueItem* ConcurrentQueue::pop(){
+	cout << "Attempting to pop" <<endl;
 	return deq(head, 1);
-//	if(item == NULL){
-//		return "";
-//	}
-//	string data = item->request;
-//	cout << "Popped request: " << data <<endl;
-////	free(item);
-//	return data;
 }
 
 void ConcurrentQueue::wakeQueue(){
 	wake_queue(head);
-	cout << "Waking queue" <<endl;
 }
 
 //wake all waiting threads to check queue
@@ -192,12 +189,10 @@ void ConcurrentQueue::wake_queue(Queue *queue){
 	pthread_mutex_lock(queue->lock);
 	pthread_cond_broadcast(queue->notEmpty);
 	pthread_mutex_unlock(queue->lock);
-	//printf("woke queue\n");
 }
 
 void ConcurrentQueue::toggleQueue(){
 	toggle_queue(head);
-	cout << "Toggling queue" <<endl;
 }
 
 void ConcurrentQueue::toggle_queue(Queue *queue){
@@ -205,5 +200,4 @@ void ConcurrentQueue::toggle_queue(Queue *queue){
 	queue->keepAlive = 0;
 	pthread_cond_broadcast(queue->notEmpty);
 	pthread_mutex_unlock(queue->lock);
-	//printf("toggled queue\n");
 }
