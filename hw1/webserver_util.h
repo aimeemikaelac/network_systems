@@ -1,8 +1,9 @@
 /*
  * webserver_util.h
  *
- *  Created on: Sep 18, 2015
- *      Author: michael
+ *  Author: Michael Coughlin
+ *  ECEN 5023: Network Systems Hw 1
+ *  Sept. 20, 2015
  */
 
 #ifndef WEBSERVER_UTIL_H_

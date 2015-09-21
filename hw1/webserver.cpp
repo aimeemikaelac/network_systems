@@ -1,5 +1,10 @@
-//webserver.cpp
-//Authot: Michael Coughlin
+/*
+ * webserver.cpp
+ *
+ *  Author: Michael Coughlin
+ *  ECEN 5023: Network Systems Hw 1
+ *  Sept. 20, 2015
+ */
 
 #include "webserver.h"
 

@@ -1,5 +1,11 @@
-//Webserver.h
-//Author: Michael Coughlin
+/*
+ * webserver.h
+ *
+ *  Author: Michael Coughlin
+ *  ECEN 5023: Network Systems Hw 1
+ *  Sept. 20, 2015
+ */
+
 #ifndef WEBSERVER_H_
 #define WEBSERVER_H_
 

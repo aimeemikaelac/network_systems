@@ -1,8 +1,9 @@
 /*
  * ConcurrentQueue.h
  *
- *  Created on: Sep 17, 2015
- *      Author: Michael Coughlin
+ *  Author: Michael Coughlin
+ *  ECEN 5023: Network Systems Hw 1
+ *  Sept. 20, 2015
  */
 
 #ifndef CONCURRENTQUEUE_H_

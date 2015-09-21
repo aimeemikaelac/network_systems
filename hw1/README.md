@@ -3,6 +3,8 @@ Programming assignment 1: Simple web server
 
 Submission by: Michael Coughlin
 
+Sept. 20, 2015
+
 ## Source code
 The source code for this assigment is contained in the following files:
 
