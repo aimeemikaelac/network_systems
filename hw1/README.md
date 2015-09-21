@@ -30,20 +30,27 @@ The source code for this assigment is contained in the following files:
 To compile the source into an executable, simply run the provided makefile in the directory
 containing the source code be executing *make* or *make all*. This can also be performed by
 executing the same commands that the makefile would run:
+```
 	g++    -c -o webserver.o webserver.cpp
 	g++    -c -o webserver_util.o webserver_util.cpp
 	g++    -c -o ConcurrentQueue.o ConcurrentQueue.cpp
 	g++ webserver.o webserver_util.o ConcurrentQueue.o -o webserver -lpthread
+```
 
 To clean the project and remove all output files, execute *make clean*, or execute directly:
+```
 	rm -f *.o
 	rm -f webserver
+```
 
 ## Usage
 The program is compiled to the **webserver** executable. To view the usage options, run:
+```
 	./webserver -h
+```
 
 The options are also provided here:
+```
 	Usage: webserver [-f FILE] [-p PORT] [-h]
 	Options:
 	  -f FILE	Specify a configuration file. If the file cannot be opened, reasonable 
@@ -51,25 +58,34 @@ The options are also provided here:
 	  -p PORT	Specify a service port. Will be ignored if port is set in a configuration
 			file. The default is 8080.
 	  -h		Print the help message and exit.
+```
 
 ## Configuration Options
 The configuration file follows the same format as is specified by the assignment. Below are
 the options:
 
 * To set the service port:
+```
 	Listen <port>
+```
 
 * To set the document root:
+```
 	DocumentRoot "<path_to_root>"
+```
 
 * To set the directory indices:
+```
 	DirectoryIndex <list_of_index_files>
+```
 
 * To specify content-types, any number of the following, where <file-type> is a file extension:
+```
 	<file-type> <content-type>
+```
 
 An example configuration file is provided below:
-
+```
 file ws.conf:
 	#service port number
 	Listen  8004
@@ -85,4 +101,4 @@ file ws.conf:
 	.txt  text/plain
 	.png  image/png
 	.gif  image/gif
-	
+```
