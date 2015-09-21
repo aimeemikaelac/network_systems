@@ -6,7 +6,7 @@ Submission by: Michael Coughlin
 Sept. 20, 2015
 
 ## Source code
-The source code for this assigment is contained in the following files:
+The source code for this assignment is contained in the following files:
 
 * webserver.cpp: The main logic of the webserver, including the main() function, 
   configuration option parsing, network connections and connection handling.
@@ -18,7 +18,7 @@ The source code for this assigment is contained in the following files:
 
 * webserver_util.h: The header file for this source file.
 
-* ConcurrentQueue.cpp: A simple implmentation of a concurrent queue for pthreads. 
+* ConcurrentQueue.cpp: A simple implementation of a concurrent queue for pthreads. 
   Is used to allow for requests to be provided to a worker thread in order, to ensure
   that requests are handled int he order they are received.
 
@@ -62,6 +62,9 @@ The options are also provided here:
 			file. The default is 8080.
 	  -h		Print the help message and exit.
 ```
+Please not that this program is intended to only be used on Linux system, as the file path
+lookups depend on Linux file path separators and file system calls. 
+
 
 ## Configuration Options
 The configuration file follows the same format as is specified by the assignment. Below are

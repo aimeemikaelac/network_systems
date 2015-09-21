@@ -59,18 +59,12 @@ class Webserver{
 		Webserver(std::string, int port);
 		~Webserver();
 		int runServer();
-
 		enum ConfigOptions{ServicePort, DocumentRoot, DirectoryIndex, ContentType };
-
 	private:
 		int parseFile(std::string);
 		bool parseOption(std::string, ConfigOptions);
-
 		struct connectionArguments;
-
 		enum ConfigOptions;
-
-		//private class variables
 		std::string fileName;
 		std::string documentRoot;
 		std::set<std::string> documentIndex;

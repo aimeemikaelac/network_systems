@@ -59,14 +59,8 @@ void ConcurrentQueue::queue_destroy(Queue *queue){
 		temp = queue->head;
 		queue->head = queue->head->next;
 		free(temp);
-
 	}
-//	int i;
-//	for(i=0; i<queue->count; i++){
-//		temp = queue->head;
-//		queue->head = queue->head->next;
-//		free(temp);
-//	}
+
 	queue->count = 0;
 
 	pthread_mutex_unlock(queue->lock);
@@ -120,25 +114,13 @@ QueueItem* ConcurrentQueue::deq(Queue *queue, int numToFetch){
 		item = queue->head;
 		last = item;
 		for(i = 0; queue->count>0 && i<numToFetch; i++){
-//			if(queue->head == NULL){
-//				cout << "Head is null" <<endl;
-//				return NULL;
-//			}
-//			else if((queue->head->next) == NULL){
-//				cout << "Head.next is null" <<endl;
-//				return NULL;
-//			}
-//			cout << "Queue: " << queue << endl;
-//			cout << "Queue head: " << queue->head << endl;
-//			cout << "Queue head next: " << queue->head->next <<endl;
-			if(queue -> head != NULL){ //&& queue->head->next != NULL){
+			if(queue -> head != NULL){
 				queue->head = queue->head->next;
 
 				queue->count--;
 			} else{
 				break;
 			}
-
 		}
 		while(last->next != queue->head){
 			last = last->next;
@@ -160,7 +142,6 @@ int ConcurrentQueue::getSize(){
 }
 
 void ConcurrentQueue::push(string data, bool keep_alive){
-	cout << "attempting to push" <<endl;
 	void* raw = malloc(sizeof(QueueItem));
 	QueueItem *new_item;
 	new_item = new(raw) QueueItem;
@@ -176,7 +157,7 @@ void ConcurrentQueue::push(string data, bool keep_alive){
 }
 
 QueueItem* ConcurrentQueue::pop(){
-	cout << "Attempting to pop" <<endl;
+//	cout << "Attempting to pop" <<endl;
 	return deq(head, 1);
 }
 

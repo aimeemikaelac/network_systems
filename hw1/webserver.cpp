@@ -33,7 +33,6 @@ Webserver::Webserver(string file="", int port=8080){
 }
 
 Webserver::~Webserver(){
-
 }
 
 int Webserver::parseFile(string file){
@@ -358,6 +357,7 @@ static void* workerThreadTask(void* workerArgs){
 				continue;
 			}
 			if(uri == NULL){
+				cout << "Bad uri. Line: "<<request<<endl;
 				write400BadUri(args->socket_fd, "");
 				continue;
 			}
@@ -409,9 +409,9 @@ static void* workerThreadTask(void* workerArgs){
  *	to be performed easily
  */
 static void *handleConnection(void* connectionArgs){
-	char recv_buffer[MAX_REQUEST_SIZE];
+	char recv_buffer[MAX_REQUEST_SIZE+1];
 	struct connectionArgs *args = (struct connectionArgs*)(connectionArgs);
-	int bytesReceived, i;
+	int bytesReceived;
 	time_t start;
 	bool waitForTimer = false, continueReceving = true, isFirst = true;
 
@@ -465,6 +465,7 @@ static void *handleConnection(void* connectionArgs){
 	 * keep-alive header is detected then the timer is reset
 	 */
 	bool keep_alive = false;
+	string request;
 	while(continueReceving){
 		pthread_mutex_lock(worker_end_lock);
 		if(workerArgsStr->workerEndConnection){
@@ -492,27 +493,20 @@ static void *handleConnection(void* connectionArgs){
 
 		bytesReceived = recv(args->connection_fd, recv_buffer, MAX_REQUEST_SIZE, MSG_DONTWAIT);
 		if(bytesReceived > 0){
+			char currentReceivedBuffer[bytesReceived];
+			memcpy(currentReceivedBuffer, recv_buffer, bytesReceived);
 			//make sure there is a null terminator to avoid overflows
-			recv_buffer[MAX_REQUEST_SIZE - 1] = '\0';
+			recv_buffer[bytesReceived] = '\0';
 
-			//the method should be the first string before a space
-			char* method = strtok(recv_buffer, " ");
+			//append the currently received bytes to the running request string
+			request.append(currentReceivedBuffer, bytesReceived);
 
-
-
-			/**
-			 * need to correct for the strange issue where null terminators ocurr
-			 * after the method string in the request header, but before a valid
-			 * uri
-			 */
-			for(i=0; i<MAX_REQUEST_SIZE - 1; i++){
-				if(recv_buffer[i] == '\0'){
-					recv_buffer[i] = ' ';
-				}
+			//need to check if we received a blank line, as this indicates that the request headers have been read
+			//since we do not support a message body in this webserver, can stop there
+			char toFind[] = {0xd, 0xa, 0xd, 0xa, 0x0};
+			if(request.find(toFind) == request.npos){
+				continue;
 			}
-
-			//wrap buffer inside a string object
-			string request = string(recv_buffer);
 
 			/**
 			 * check if a keep-alive header is present. if so, need to reset timer
@@ -526,17 +520,16 @@ static void *handleConnection(void* connectionArgs){
 			if(request.find("Connection: keep-alive") != request.npos){
 				keep_alive = true;
 				waitForTimer = true;
+				isFirst = false;
 				start = time(NULL);
 			} else if(isFirst){
-				//TODO: may need to change. i think we are supposed to close immediatly after
-				//the response if no keep-alive is sent
-//				waitForTimer = true;
 				waitForTimer = false;
 				start = time(NULL);
 				isFirst = false;
 			}
 			else{
 				waitForTimer = false;
+				continueReceving = false;
 			}
 			/**
 			 * check that the method is GET. as per email from Sangtae, we only
@@ -544,22 +537,32 @@ static void *handleConnection(void* connectionArgs){
 			 * should only put requests that are GET methods onto the work queue
 			 */
 			//first make sure that the strtok did not fail
+
+			string clone = string(request.c_str());
+			char* method = strtok((char*)clone.c_str(), " ");
+
 			if(method == NULL){
 				//if so, send bad method
 				write400BadMethod(args->connection_fd, "");
+				break;
 			} else if(strncmp(method, "GET", 3) == 0){
 				/**
 				 * put the request onto the work queue.
 				 * should notify the worker thread that
 				 * data is available automatically
+				 *
+				 * make a deep copy of the string so that
+				 * we can reset the request
 				 */
-				workQueue->push(request, keep_alive);
+				workQueue->push(string(request.c_str()), keep_alive);
+				request = "";
 			} else{
 				/**
 				 * send am invalid method message. since strtok is supposed to return
 				 * a valid c_str, this should not fail
 				 */
 				write400BadMethod(args->connection_fd, string(method));
+				break;
 			}
 		}
 
@@ -673,7 +676,6 @@ int Webserver::runServer(){
 
 		//block on accept until new connection
 		new_connection_fd = accept(socket_fd, &connection_addr, &connection_addr_size);
-		cout << "accept function returned"<<endl;
 		if(new_connection_fd < 0){
 			cout << "Error accepting connection" <<endl;
 		}

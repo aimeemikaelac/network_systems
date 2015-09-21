@@ -41,7 +41,6 @@ class ConcurrentQueue {
 public:
 	ConcurrentQueue();
 	virtual ~ConcurrentQueue();
-//	std::string pop();
 	QueueItem* pop();
 	void push(std::string data, bool keep_alive);
 	int getSize();
@@ -54,10 +53,7 @@ private:
 	void toggle_queue(Queue *queue);
 	Queue* queue_init();
 	void queue_destroy(Queue *queue);
-
 	Queue *head;
-
-
 };
 
 #endif /* CONCURRENTQUEUE_H_ */
