@@ -34,9 +34,9 @@ To compile the source into an executable, simply run the provided makefile in th
 containing the source code be executing *make* or *make all*. This can also be performed by
 executing the same commands that the makefile would run:
 ```
-	g++    -c -o webserver.o webserver.cpp
-	g++    -c -o webserver_util.o webserver_util.cpp
-	g++    -c -o ConcurrentQueue.o ConcurrentQueue.cpp
+	g++ -c -o webserver.o webserver.cpp
+	g++ -c -o webserver_util.o webserver_util.cpp
+	g++ -c -o ConcurrentQueue.o ConcurrentQueue.cpp
 	g++ webserver.o webserver_util.o ConcurrentQueue.o -o webserver -lpthread
 ```
 
