@@ -5,15 +5,17 @@
 
 using namespace std;
 
-Webserver::Webserver(string file){
+Webserver::Webserver(string file="", int port=8080){
 	fileName = file;
 	//Assign reasonable defaults to config parameters
-	servicePort = 8080;
+	servicePort = port;
 	documentRoot = ".";
 	documentIndex.insert("index.html");
 	documentIndex.insert("index.htm");
 	contentTypes[".html"] = "text/html";
-	parseFile(fileName);
+	if(file != ""){
+		parseFile(file);
+	}
 	cout << "Current configuration options:"<<endl;
 	cout << "Service port: " << servicePort << endl;
 	cout << "Document root: " << documentRoot << endl;
@@ -30,7 +32,7 @@ Webserver::~Webserver(){
 }
 
 int Webserver::parseFile(string file){
-	cout << "File: "<<file<<endl;
+	cout << "Parsing configuration file: "<<file<<endl;
 	ifstream configFile(file.c_str());
 	if(!configFile.is_open()){
 		cout << "Error opening config file" << endl;
@@ -44,7 +46,6 @@ int Webserver::parseFile(string file){
 	int lineCounter = 0;
 	while(!configFile.eof()){
 		if(getline(configFile, line)){
-			cout << line << endl;
 			//check if it is the "Listen" parameter
 			if(line.find("Listen") == 0){
 				current = ServicePort;
@@ -85,7 +86,6 @@ bool Webserver::parseOption(string line, ConfigOptions option){
 				cout << "Could not parse service port" << endl;
 				return false;
 			}
-			cout << "Listen port: " << port << endl;
 			servicePort = port;
 			return true;
 		}
@@ -101,7 +101,6 @@ bool Webserver::parseOption(string line, ConfigOptions option){
 			documentRoot = documentRoot.replace(firstOccurence, firstOccurence + 1, "");
 			int secondOccurrence = documentRoot.find("\"");
 			documentRoot = documentRoot.replace(secondOccurrence, secondOccurrence + 1, "");
-			cout << "Replaced document root: " << documentRoot << endl;
 			return true;
 		}
 		case DirectoryIndex:
@@ -176,7 +175,7 @@ bool Webserver::parseOption(string line, ConfigOptions option){
 
  */
 static int handleGet(int socket_fd, string request, string documentRoot, set<string> documentIndex, map<string, string> contentTypes, bool keep_alive){
-	int i, exists, accessible;
+	int exists, accessible;
 	string currentContentType;
 	bool found = false;
 
@@ -629,7 +628,6 @@ int Webserver::runServer(){
 	server_addr.sin_port = htons(servicePort);
 
 	cout << "Running server" << endl;
-	cout << "Service port: " << string(service) <<endl;
 
 	//request socket from system
 	socket_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -704,8 +702,37 @@ int Webserver::runServer(){
 	return 0;
 }
 
-int main(){
-	Webserver server("/home/michael/network_systems/hw1/ws.conf");
+void printHelp(){
+	cout << "Usage: webserver [-f FILE] [-p PORT] [-h]" << endl;
+	cout << "Options:" << endl;
+	cout << "  -f FILE\tSpecify a configuration file. If the file cannot be opened, reasonable defaults will be assumed. See README for format. The default is ./ws.conf."<<endl;
+	cout << "  -p PORT\tSpecify a service port. Will be ignored if port is set in a configuration file. The default is 8080." <<endl;
+	cout << "  -h\t\tPrint this message and exit."<<endl;
+}
+
+int main(int argc, char** argv){
+	int opt;
+	string configFile = "./ws.conf";
+	int port = 8080;
+	if(argc > 1){
+		while( (opt = getopt(argc, argv, "f:p:h")) != -1){
+			switch(opt){
+				case 'f':
+					configFile = string(optarg);
+					break;
+				case 'p':
+					port = atoi(optarg);
+					break;
+				case 'h':
+					printHelp();
+					return -1;
+				case '?':
+					printHelp();
+					return -1;
+			}
+		}
+	}
+	Webserver server(configFile, port);
 	cout << "Return code: " << server.runServer() << endl;
 	return 0;
 }

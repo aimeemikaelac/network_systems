@@ -50,7 +50,7 @@ struct workerArgs{
 
 class Webserver{
 	public:
-		Webserver(std::string);
+		Webserver(std::string, int port);
 		~Webserver();
 		int runServer();
 

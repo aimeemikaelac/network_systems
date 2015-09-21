@@ -7,4 +7,5 @@ all: $(OBJS)
 	$(CXX) $^ -o $(TARGET) $(LDLIBS)
 clean:
 	$(RM) *.o
+	$(RM) $(TARGET)
 
