@@ -16,12 +16,12 @@
 #include <string.h>
 #include <iostream>
 #include <fstream>
-#include "DFSServer.h"
+#include "util.h"
 
 struct QueueItem{
 	std::string user;
 	std::string password;
-	DFSServer::RequestOption command;
+	RequestOption command;
 	std::string file;
 	std::string fileContents;
 	int socket;
@@ -47,7 +47,7 @@ public:
 	ConcurrentQueue();
 	virtual ~ConcurrentQueue();
 	QueueItem* pop();
-	void push(DFSServer::RequestOption command, std::string user, std::string password, std::string file, std::string fileContents, int socket);
+	void push(RequestOption command, std::string user, std::string password, std::string file, std::string fileContents, int socket);
 	int getSize();
 	void toggleQueue();
 	void wakeQueue();

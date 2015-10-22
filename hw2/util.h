@@ -17,26 +17,31 @@
 #include <iostream>
 #include <fstream>
 #include <pthread.h>
+#include <arpa/inet.h>
 #include <map>
 #include <list>
 #include <vector>
 #include <dirent.h>
 #include <errno.h>
-#include "ConcurrentQueue.h"
-#include "DFSServer.h"
 
 #define BUFFER_SIZE 8192
 
-typedef struct connectionArgs{
-	int thread_id;
-	int connection_fd;
-	ConcurrentQueue *workQueue;
-} connectionArgs;
+enum RequestOption{ LIST,GET,PUT,MKDIR,NONE };
 
-typedef struct workerArgs{
-	int thread_id;
-	ConcurrentQueue *workQueue;
-	std::map<std::string, std::list<std::string>> userTable;
-} workerArgs;
+void doPut(int socket, std::string user, std::string password, std::string file, std::string fileContents);
+void doGet(int socket, std::string user, std::string password, std::string file);
+void doMkdir(int socket, std::string user, std::string password, std::string file);
+void doList(int socket, std::string user, std::string password);
+int getdir (std::string dir, std::string base, std::vector<std::string> &files);
+bool isDirectory(std::string filePath);
+int linuxCreateDirectoryTree(std::string path, int isFile);
+int getFileSize(std::string file);
+void checkFilepathExistsAccessible(std::string filePath, int* exists, int* accessible);
+bool endsWith(char* str, char* suffix);
+int sendErrorInvalidCredentials(int socket);
+int sendErrorBadCommand(int socket);
+int writeToSocket(int socket_fd, std::string line);
+RequestOption getCommand(char* command);
+int getSocket(int port);
 
 #endif /* UTIL_H_ */

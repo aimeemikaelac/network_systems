@@ -141,7 +141,7 @@ int ConcurrentQueue::getSize(){
 	return head->count;
 }
 
-void ConcurrentQueue::push(DFSServer::RequestOption command, std::string user, std::string password, std::string file, int socket){
+void ConcurrentQueue::push(RequestOption command, string user, string password, string file, string fileContents, int socket){
 	void* raw = malloc(sizeof(QueueItem));
 	QueueItem *new_item;
 	new_item = new(raw) QueueItem;
@@ -150,6 +150,7 @@ void ConcurrentQueue::push(DFSServer::RequestOption command, std::string user, s
 	new_item->user = user;
 	new_item->password = password;
 	new_item->file = file;
+	new_item->fileContents = fileContents;
 	new_item->socket = socket;
 
 	//IMPORTANT: need to set next to NULL or there may be a seg fault

@@ -10,7 +10,7 @@
 using namespace std;
 
 int getSocket(int port){
-	int socket_fd, rc;
+	int socket_fd, rc, status;
 	struct sockaddr_in server_addr;
 	char service[100];
 	sprintf(service, "%i", port);
@@ -39,143 +39,40 @@ int getSocket(int port){
 		cout << "Error binding on socket" << endl;
 		return status;
 	} else{
-		cout << "Running HTTP server on TCP port: "<<servicePort<<endl;
+		cout << "Running HTTP server on TCP port: "<<port<<endl;
 	}
-	MSG_DONTWAIT
 	return socket_fd;
 }
 
 
-int serverListen(int port, ConcurrentQueue workQueue, void (*handler)(void*)){
-	int status, new_connection_fd, socket_fd, rc, thread_ids = 0;
 
-	socket_fd = getSocket(port);
 
-	//listen on socket with a backlog of 10 connections
-	status = listen(socket_fd, 100);
-	if(status < 0){
-		cout << "Error listening on bound socket" << endl;
-		return status;
-	} else{
-		cout << "Listening on TCP socket" << endl;
-	}
-
-	//TODO: make this into an atomic flag
-	while(true){
-		//accept connections until program terminated
-		char clientIp[INET_ADDRSTRLEN];
-		cout << "Accepting new connections" << endl;
-
-		struct sockaddr connection_addr;
-		socklen_t connection_addr_size = sizeof(sockaddr);
-
-		//block on accept until new connection
-		new_connection_fd = accept(socket_fd, &connection_addr, &connection_addr_size);
-		if(new_connection_fd < 0){
-			cout << "Error accepting connection" <<endl;
-		}
-
-		//calculate ip of client
-		int ip = ((struct sockaddr_in*)(&connection_addr))->sin_addr.s_addr;
-		inet_ntop(AF_INET, &ip, clientIp, INET_ADDRSTRLEN);
-		cout << "Accepted new connection from: " << string(clientIp) << " in socket: " << new_connection_fd << endl;
-
-		//spin off new pthread to handle connection
-
-		//setup thread and inputs
-		pthread_t* current_connection_thread = (pthread_t*)malloc(sizeof(pthread_t));
-		struct connectionArgs *args = new connectionArgs;
-		args->thread_id = thread_ids;
-		args->connection_fd = new_connection_fd;
-		args->workQueue = workQueue;
-
-		//spawn thread. we do not wait on these, since we do not care when they finish
-		//these threads handle closing the socket themselves
-		rc = pthread_create(current_connection_thread, NULL, handler, (void*)args);
-		if(rc){
-			cout << "Error creating thread: "<<thread_ids<<endl;
-			return -1;
-		}
-		thread_ids++;
-		threads.push_back(current_connection_thread);
-	}
-	return 0;
-}
-
-DFSServer::RequestOption getCommand(char* command){
+RequestOption getCommand(char* command){
 	int stringLength = strlen(command);
 	switch(stringLength){
 		case 5:
 			if(strncmp("MKDIR", command, 5) == 0){
-				return DFSServer::RequestOption::MKDIR;
+				return RequestOption::MKDIR;
 			}
-			return DFSServer::RequestOption::NONE;
+			return RequestOption::NONE;
 		case 4:
 			if(strncmp("LIST", command, 4) == 0){
-				return DFSServer::RequestOption::LIST;
+				return RequestOption::LIST;
 			}
-			return DFSServer::RequestOption::NONE;
+			return RequestOption::NONE;
 		case 3:
 			if(strncmp("PUT", command, 3) == 0){
-				return DFSServer::RequestOption::PUT;
+				return RequestOption::PUT;
 			} else if(strncmp("GET", command, 3) == 0){
-				return DFSServer::RequestOption::GET;
+				return RequestOption::GET;
 			}
-			return DFSServer::RequestOption::NONE;
+			return RequestOption::NONE;
 		default:
-			return DFSServer::RequestOption::NONE;
+			return RequestOption::NONE;
 	}
 }
 
-void handleConnection(void* args){
-	int socket, bytesReceived, commandReceived = 0;
-	char recv_buffer[BUFFER_SIZE+1];
-	connectionArgs *inArgs = (connectionArgs)(args);
-	socket = inArgs->connection_fd;
-	ConcurrentQueue *queue = inArgs->workQueue;
-	DFSServer::RequestOption command;
-	string file = "";
-	string fileContents = "";
-	string user = "";
-	string password = "";
-	do{
-		memset(recv_buffer, 0, BUFFER_SIZE+1);
-		bytesReceived = recv(socket, recv_buffer, BUFFER_SIZE, NULL);
-		if(bytesReceived <= 0){
-			continue;
-		}
-		string currentData(recv_buffer);
-		//parse the command and most of the file in first read
-		if(!commandReceived){
-			char tempBuffer[BUFFER_SIZE];
-			strcpy(tempBuffer, currentData.c_str());
-			char *command = strtok(tempBuffer, " ");
-			command = getCommand(command);
-			//format: <command> <user> <password> <file, if not LIST command> \n <file contents, if put>
-			if(command != DFSServer::RequestOption::NONE){
-				user = string(strtok(NULL, " "));
-				password = string(strtok(NULL,  " "));
-				//TODO: may need to support this in LIST as an optional parameter
-				if(command != DFSServer::RequestOption::LIST){
-					file = string(strtok(NULL, " "));
-				}
-				if(command == DFSServer::RequestOption::PUT){
-					fileContents = string(currentData, currentData.find("\n"));
-				}
-			}
-			commandReceived = 1;
-		} else{
-			//only should occur if is a large file and command is PUT
-			if(command != DFSServer::RequestOption::PUT){
-				break;
-			}
-			//add on any new content
-			file.append(currentData);
-		}
-	} while(bytesReceived > 0);
-	queue->push(command, user, password, file, fileContents, socket);
-	pthread_exit(NULL);
-}
+
 
 int writeToSocket(int socket_fd, string line){
 	int written = write(socket_fd, line.c_str(), line.length());
@@ -405,74 +302,7 @@ void doPut(int socket, string user, string password, string file, string fileCon
 	free(currentwd);
 }
 
-void worker(void* args){
-	workerArgs *inArgs = (workerArgs)(args);
-	//TODO: for now, loop and wait if the queue is empty
-	ConcurrentQueue *queue = inArgs->workQueue;
-	struct timespec sleepTime;
-	sleepTime.tv_sec = 0;
-	sleepTime.tv_nsec = 500000000; //0.5 seconds in ns
-	struct timespec sleepTimeRem;
-	string user;
-	string password;
-	string file;
-	string fileContents;
-	list<string> passwordList;
-	int socket;
-	DFSServer::RequestOption command;
-	map<string, string> userTable = inArgs->userTable;
-	while(true){
-		if(queue->getSize() <= 0){
-			nanosleep(&sleepTime, &sleepTimeRem);
-			continue;
-		}
-		QueueItem *request = queue->pop();
-		socket = request->socket;
-		command = request->command;
-		if(command == DFSServer::RequestOption::NONE){
-			sendErrorBadCommand(socket);
-		}
-		user = request->user;
-		if(userTable.find(user) == userTable.end()){
-			sendErrorInvalidCredentials(socket);
-		}
-		password = request->password;
-		passwordList = userTable[user];
-		int validPassword = 0;
-		for(std::list<int>::iterator it = passwordList.begin(); it != passwordList.end(); it++){
-			string current = (string)(*it);
-			if(current == password){
-				validPassword = 1;
-				break;
-			}
-		}
-		if(validPassword == 0){
-			sendErrorInvalidCredentials(socket);
-		}
-		file = request->file;
-		fileContents = request->fileContents;
-		switch(command){
-			case DFSServer::RequestOption::LIST:
-				doList(socket, user, password);
-				break;
-			case DFSServer::RequestOption::MKDIR:
-				doMkdir(socket, user, password, file);
-				break;
-			case DFSServer::RequestOption::GET:
-				doGet(socket, user, password, file);
-				break;
-			case DFSServer::RequestOption::PUT:
-				//TODO: if the file is too large to store in memory, put into a
-				//temp file in the handler and pass the path to the temp file instead
-				doPut(socket, user, password, file, fileContents);
-				break;
-			case DFSServer::RequestOption::NONE: Default:
-				sendErrorBadCommand(socket);
-				break;
-		}
-	}
-	pthread_exit(NULL);
-}
+
 
 
 
