@@ -10,7 +10,7 @@
 using namespace std;
 
 int getSocket(int port){
-	int socket_fd, rc, status;
+	int socket_fd, status;
 	struct sockaddr_in server_addr;
 	char service[100];
 	sprintf(service, "%i", port);
@@ -18,7 +18,7 @@ int getSocket(int port){
 	//setup struct to create socket
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_addr.s_addr = INADDR_ANY;
-	server_addr.sin_port = htons(seargsrvicePort);
+	server_addr.sin_port = htons(port);
 
 	cout << "Running server" << endl;
 
@@ -52,23 +52,23 @@ RequestOption getCommand(char* command){
 	switch(stringLength){
 		case 5:
 			if(strncmp("MKDIR", command, 5) == 0){
-				return RequestOption::MKDIR;
+				return MKDIR;
 			}
-			return RequestOption::NONE;
+			return NONE;
 		case 4:
 			if(strncmp("LIST", command, 4) == 0){
-				return RequestOption::LIST;
+				return LIST;
 			}
-			return RequestOption::NONE;
+			return NONE;
 		case 3:
 			if(strncmp("PUT", command, 3) == 0){
-				return RequestOption::PUT;
+				return PUT;
 			} else if(strncmp("GET", command, 3) == 0){
-				return RequestOption::GET;
+				return GET;
 			}
-			return RequestOption::NONE;
+			return NONE;
 		default:
-			return RequestOption::NONE;
+			return NONE;
 	}
 }
 
@@ -141,7 +141,7 @@ int linuxCreateDirectoryTree(string path, int isFile){
 		}
 	}
 	vector<string> directories;
-	char temp[path.npos];
+	char temp[path.length()];
 	strcpy(temp, path.c_str());
 	char *current = strtok(temp, "/");
 	while(current != NULL){
@@ -150,7 +150,7 @@ int linuxCreateDirectoryTree(string path, int isFile){
 	string currentDir(currentwd);
 	int startingSize = directories.size();
 	for(i=0; i<startingSize; i++){
-		if(isFile && i == directories.size() - 1){
+		if(isFile && (unsigned)i == directories.size() - 1){
 			break;
 		}
 		currentDir.append("/");
@@ -167,6 +167,7 @@ int linuxCreateDirectoryTree(string path, int isFile){
 		}
 	}
 	free(currentwd);
+	return 0;
 }
 
 bool isDirectory(string filePath){
@@ -211,16 +212,16 @@ int getdir (string dir, string base, vector<string> &files)
     }
     closedir(dp);
     int i;
-    for(i=0; i<directories.size(); i++){
+    for(i=0; (unsigned)i<directories.size(); i++){
     	getdir(directories[i], baseDirs[i], files);
     }
     return 0;
 }
 
 void doList(int socket, string user, string password){
-	int i, exists = 0, accessible = 0, numFiles = 0;
+	int i, exists = 0, accessible = 0;
 //	list<string> files;
-	string message = "Total files: ";
+	string message = "Total_Files: ";
 	char* currentwd = getcwd(NULL, 0);
 	string userDir(currentwd);
 	userDir = userDir.append("/");
@@ -232,9 +233,11 @@ void doList(int socket, string user, string password){
 	if(exists && accessible){
 		getdir(userDir, "", files);
 	}
-	message.append(string(files.size()));
+	char num[100];
+	sprintf(num, "%d", (int)files.size());
+	message.append(num);
 	message.append("\nFiles:");
-	for(i=0; i<files.size(); i++){
+	for(i=0; (unsigned)i<files.size(); i++){
 		message.append("\n");
 		message.append(files[i]);
 	}
@@ -249,7 +252,7 @@ void doMkdir(int socket, string user, string password, string file){
 	dir.append("/");
 	dir.append(file);
 	if(linuxCreateDirectoryTree(dir, 0) < 0){
-		writeToSocket(socket, "Could not create directory");
+		writeToSocket(socket, "Error: Could not create directory");
 	} else{
 		writeToSocket(socket, "Created directory");
 	}
@@ -277,7 +280,7 @@ void doGet(int socket, string user, string password, string file){
 			}
 		}
 	}else{
-		writeToSocket(socket, "Could not access file");
+		writeToSocket(socket, "Error: Could not access file");
 	}
 	free(currentwd);
 }
@@ -293,10 +296,11 @@ void doPut(int socket, string user, string password, string file, string fileCon
 	path.append("/");
 	path.append(file);
 	checkFilepathExistsAccessible(path, &exists, &accessible);
+	//TODO: send a return message
 	if(exists || !accessible || isDirectory(path)){
 		return;
 	} else{
-		ofstream file(path);
+		ofstream file(path.c_str());
 		file << fileContents;
 	}
 	free(currentwd);

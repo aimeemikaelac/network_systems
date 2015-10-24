@@ -34,7 +34,7 @@ void DFSServer::runServer(string directory, int port){
 	args->userTable = userTable;
 	//spawn worker thread
 	pthread_t* worker_thread = (pthread_t*)malloc(sizeof(pthread_t));
-	int rc = pthread_create(worker_thread, NULL, DFSServer::workerThread, (void*)args);
+	int rc = pthread_create(worker_thread, NULL, workerThread, (void*)args);
 	if(rc){
 		cout << "Error creating worker thread " << endl;
 		return;
@@ -119,7 +119,7 @@ int DFSServer::serverListen(int port, ConcurrentQueue workQueue){
 	return 0;
 }
 
-static void handleConnection(void* args){
+static void* handleConnection(void* args){
 	int socket, bytesReceived, commandReceived = 0;
 	char recv_buffer[BUFFER_SIZE+1];
 	connectionArgs *inArgs = (connectionArgs*)(args);
@@ -132,7 +132,7 @@ static void handleConnection(void* args){
 	string password = "";
 	do{
 		memset(recv_buffer, 0, BUFFER_SIZE+1);
-		bytesReceived = recv(socket, recv_buffer, BUFFER_SIZE, NULL);
+		bytesReceived = recv(socket, recv_buffer, BUFFER_SIZE, 0);
 		if(bytesReceived <= 0){
 			continue;
 		}
@@ -169,7 +169,7 @@ static void handleConnection(void* args){
 	pthread_exit(NULL);
 }
 
-static void workerThread(void* args){
+static void* workerThread(void* args){
 	workerArgs *inArgs = (workerArgs*)(args);
 	//TODO: for now, loop and wait if the queue is empty
 	ConcurrentQueue *queue = inArgs->workQueue;
@@ -219,18 +219,18 @@ static void workerThread(void* args){
 			case LIST:
 				doList(socket, user, password);
 				break;
-			case RequestOption::MKDIR:
+			case MKDIR:
 				doMkdir(socket, user, password, file);
 				break;
-			case RequestOption::GET:
+			case GET:
 				doGet(socket, user, password, file);
 				break;
-			case RequestOption::PUT:
+			case PUT:
 				//TODO: if the file is too large to store in memory, put into a
 				//temp file in the handler and pass the path to the temp file instead
 				doPut(socket, user, password, file, fileContents);
 				break;
-			case RequestOption::NONE: Default:
+			case NONE: default:
 				sendErrorBadCommand(socket);
 				break;
 		}
@@ -247,7 +247,7 @@ static void workerThread(void* args){
 //}
 
 int main(int argc, char** argv){
-	int opt;
+//	int opt;
 	string userTableFile = "./dfs.conf";
 	if(argc<3){
 		cout << "Incorrect number of arguments" <<endl;

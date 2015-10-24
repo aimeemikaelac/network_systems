@@ -23,6 +23,9 @@
 #include <vector>
 #include <dirent.h>
 #include <errno.h>
+#include <stdlib.h>
+#include <openssl/md5.h>
+#include <streambuf>
 
 #define BUFFER_SIZE 8192
 

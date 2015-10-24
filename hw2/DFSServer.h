@@ -23,6 +23,9 @@ typedef struct workerArgs{
 	std::map<std::string, std::list<std::string> > userTable;
 } workerArgs;
 
+static void* workerThread(void* args);
+static void* handleConnection(void* args);
+
 class DFSServer {
 public:
 	DFSServer(std::string dir, int port, std::string userTablePath);
@@ -32,8 +35,6 @@ public:
 private:
 	std::map<std::string, std::list<std::string> > userTable;
 	int serverListen(int port, ConcurrentQueue workQueue);
-	static void workerThread(void* args);
-	static void handleConnection(void* args);
 };
 
 #endif /* DFSSERVER_H_ */
