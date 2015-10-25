@@ -26,6 +26,10 @@
 #include <stdlib.h>
 #include <openssl/md5.h>
 #include <streambuf>
+#include <set>
+#include <openssl/sha.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
 
 #define BUFFER_SIZE 8192
 

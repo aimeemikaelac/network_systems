@@ -20,7 +20,7 @@ typedef struct connectionArgs{
 typedef struct workerArgs{
 	int thread_id;
 	ConcurrentQueue *workQueue;
-	std::map<std::string, std::list<std::string> > userTable;
+	std::map<std::string, std::list<std::string> > *userTable;
 } workerArgs;
 
 static void* workerThread(void* args);

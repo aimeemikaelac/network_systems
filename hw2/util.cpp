@@ -39,7 +39,7 @@ int getSocket(int port){
 		cout << "Error binding on socket" << endl;
 		return status;
 	} else{
-		cout << "Running HTTP server on TCP port: "<<port<<endl;
+		cout << "Running DFS server on TCP port: "<<port<<endl;
 	}
 	return socket_fd;
 }
@@ -146,8 +146,10 @@ int linuxCreateDirectoryTree(string path, int isFile){
 	char *current = strtok(temp, "/");
 	while(current != NULL){
 		directories.push_back(string(current));
+		current = strtok(NULL, "/");
 	}
 	string currentDir(currentwd);
+	cout << "Current working directory: "<<currentwd<<endl;
 	int startingSize = directories.size();
 	for(i=0; i<startingSize; i++){
 		if(isFile && (unsigned)i == directories.size() - 1){
@@ -161,6 +163,7 @@ int linuxCreateDirectoryTree(string path, int isFile){
 		if(exists && accessible){
 			continue;
 		} else if(exists == 0){
+			cout << "Making dir: "<<currentDir<<endl;
 			mkdir(currentDir.c_str(), 0700);
 		} else if(accessible == 0){
 			return -1;
@@ -192,7 +195,6 @@ int getdir (string dir, string base, vector<string> &files)
 //        cout << "Error(" << errno << ") opening " << dir << endl;
         return errno;
     }
-
     while ((dirp = readdir(dp)) != NULL) {
     	string file = dir;
     	file = file.append("/");
@@ -200,9 +202,13 @@ int getdir (string dir, string base, vector<string> &files)
     	string fileStore = base;
     	fileStore = fileStore.append("/");
     	fileStore = fileStore.append(dirp->d_name);
+    	cout << "File: "<<file<<endl;
 //    	stat(file.c_str(), &stat_buf);
 //		if(S_ISDIR(stat_buf.st_mode)){
     	if(isDirectory(file)){
+    		if(file.find("..") != file.npos || file.find(".") != file.npos){
+    			continue;
+    		}
 			directories.push_back(file);
 			baseDirs.push_back(string(dirp->d_name));
 		} else{
@@ -220,6 +226,7 @@ int getdir (string dir, string base, vector<string> &files)
 
 void doList(int socket, string user, string password){
 	int i, exists = 0, accessible = 0;
+	cout << "Parsing LIST" <<endl;
 //	list<string> files;
 	string message = "Total_Files: ";
 	char* currentwd = getcwd(NULL, 0);
@@ -288,19 +295,27 @@ void doGet(int socket, string user, string password, string file){
 void doPut(int socket, string user, string password, string file, string fileContents){
 	int exists = 0, accessible = 0;
 	char *currentwd = getcwd(NULL, 0);
-	string path(currentwd);
-	path.append("/");
+	cout << "Doing PUT"<<endl;
+	string path("");
+//	path.append("/");
 	path.append(user);
 	path.append("/");
 	path.append(password);
 	path.append("/");
 	path.append(file);
+	linuxCreateDirectoryTree(path, 1);
 	checkFilepathExistsAccessible(path, &exists, &accessible);
 	//TODO: send a return message
-	if(exists || !accessible || isDirectory(path)){
+	if(exists && !accessible){
+		cout << "Error: not accessible: "<<path<<endl;
+		return;
+	} else if(isDirectory(path)){
+		cout << "Error: is directory: "<<path<<endl;
 		return;
 	} else{
-		ofstream file(path.c_str());
+		cout << "Writing file"<<endl;
+		ofstream file;
+		file.open(path.c_str(), ofstream::out|ofstream::trunc);
 		file << fileContents;
 	}
 	free(currentwd);

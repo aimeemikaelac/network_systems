@@ -21,7 +21,17 @@ DFSServer::~DFSServer() {
 	// TODO Auto-generated destructor stub
 }
 
-
+void printUserTable(map<string, list<string> > &table){
+	map<string, list<string> >::iterator mapIt;
+	for(mapIt= table.begin(); mapIt!=table.end(); mapIt++){
+		cout << "Username: "<<mapIt->first<<" Passwords:";
+		list<string>::iterator listIt;
+		for(listIt = mapIt->second.begin(); listIt!= mapIt->second.end(); listIt++){
+			cout << *listIt+" ";
+		}
+		cout << endl;
+	}
+}
 
 void DFSServer::runServer(string directory, int port){
 	if(chdir(directory.c_str()) < 0){
@@ -31,7 +41,8 @@ void DFSServer::runServer(string directory, int port){
 	ConcurrentQueue queue;
 	struct workerArgs *args = new workerArgs;
 	args->workQueue = &queue;
-	args->userTable = userTable;
+	args->userTable = &userTable;
+	printUserTable(userTable);
 	//spawn worker thread
 	pthread_t* worker_thread = (pthread_t*)malloc(sizeof(pthread_t));
 	int rc = pthread_create(worker_thread, NULL, workerThread, (void*)args);
@@ -56,10 +67,13 @@ void DFSServer::parseUserTable(string table){
 				char *user = strtok(tempLine, " ");
 				char *password = strtok(NULL, " ");
 				if(userTable.count(user) == 0){
+					cout << "Parsed user: "<<user<<" Password: "<<password<<endl;
 					userTable[string(user)] = list<string>();
 				}
 				list<string> current = userTable[string(user)];
 				current.push_back(string(password));
+				userTable[string(user)] = current;
+				cout << "Current password list: "<<current.size()<<endl;
 			}
 		}
 	}
@@ -130,6 +144,9 @@ static void* handleConnection(void* args){
 	string fileContents = "";
 	string user = "";
 	string password = "";
+	int length = 0;
+	int readFileBytes = 0;
+	bool continueToReceive = true;
 	do{
 		memset(recv_buffer, 0, BUFFER_SIZE+1);
 		bytesReceived = recv(socket, recv_buffer, BUFFER_SIZE, 0);
@@ -140,22 +157,36 @@ static void* handleConnection(void* args){
 		//parse the command and most of the file in first read
 		if(!commandReceived){
 			char tempBuffer[BUFFER_SIZE];
+			cout << "Received message: "<<endl<<currentData<<endl;
 			strcpy(tempBuffer, currentData.c_str());
 			char *commandChar = strtok(tempBuffer, " ");
 			command = getCommand(commandChar);
+			cout << "Parsed command: "<<commandChar<<endl;
 			//format: <command> <user> <password> <file, if not LIST command> \n <file contents, if put>
 			if(command != NONE){
+				cout << "Parsing user"<<endl;
 				user = string(strtok(NULL, " "));
+				cout << "Parsed user: "<<user<<endl;
+				cout << "Parsing password"<<endl;
 				password = string(strtok(NULL,  " "));
+				cout << "Parsed password: "<<password<<endl;
 				//TODO: may need to support this in LIST as an optional parameter
 				if(command != LIST){
 					file = string(strtok(NULL, " "));
 				}
 				if(command == PUT){
-					fileContents = string(currentData, currentData.find("\n"));
+					char* lengthChar = strtok(NULL, " ");
+					length = atoi(lengthChar);
+					fileContents = string(currentData, currentData.find("\n")+1);
+					readFileBytes += fileContents.size();
 				}
 			}
 			commandReceived = 1;
+			if(command != PUT){
+				continueToReceive = false;
+			} else if(readFileBytes >= length){
+				continueToReceive = false;
+			}
 		} else{
 			//only should occur if is a large file and command is PUT
 			if(command != PUT){
@@ -163,9 +194,13 @@ static void* handleConnection(void* args){
 			}
 			//add on any new content
 			file.append(currentData);
+			readFileBytes+=currentData.size();
+			if(readFileBytes >= length){
+				break;
+			}
 		}
-	} while(bytesReceived > 0);
-	queue->push(command, user, password, file, fileContents, socket);
+	} while(bytesReceived > 0 && continueToReceive);
+	queue->push(command, user, password, file, fileContents, length, socket);
 	pthread_exit(NULL);
 }
 
@@ -184,7 +219,8 @@ static void* workerThread(void* args){
 	list<string> passwordList;
 	int socket;
 	RequestOption command;
-	map<string, list<string> > userTable = inArgs->userTable;
+	map<string, list<string> > localUserTable = *(inArgs->userTable);
+	printUserTable(localUserTable);
 	while(true){
 		if(queue->getSize() <= 0){
 			nanosleep(&sleepTime, &sleepTimeRem);
@@ -197,24 +233,29 @@ static void* workerThread(void* args){
 			sendErrorBadCommand(socket);
 		}
 		user = request->user;
-		if(userTable.find(user) == userTable.end()){
+		if(localUserTable.count(user) == 0){
+			cout << "Could not find username"<<endl;
 			sendErrorInvalidCredentials(socket);
 		}
 		password = request->password;
-		passwordList = userTable[user];
+		passwordList = localUserTable[user];
 		int validPassword = 0;
+		cout << "Number of passwords: "<<passwordList.size()<<endl;
 		for(std::list<string>::iterator it = passwordList.begin(); it != passwordList.end(); it++){
 			string current = (string)(*it);
+			cout << "Current password: "<<current<<endl;
 			if(current == password){
 				validPassword = 1;
 				break;
 			}
 		}
 		if(validPassword == 0){
+			cout << "Could not find password"<<endl;
 			sendErrorInvalidCredentials(socket);
 		}
 		file = request->file;
 		fileContents = request->fileContents;
+		cout << "Worker processing request"<<endl;
 		switch(command){
 			case LIST:
 				doList(socket, user, password);
@@ -234,6 +275,7 @@ static void* workerThread(void* args){
 				sendErrorBadCommand(socket);
 				break;
 		}
+		close(socket);
 	}
 	pthread_exit(NULL);
 }
@@ -251,6 +293,7 @@ int main(int argc, char** argv){
 	string userTableFile = "./dfs.conf";
 	if(argc<3){
 		cout << "Incorrect number of arguments" <<endl;
+		return -1;
 	}
 	string directory(argv[1]);
 	int port = atoi(argv[2]);

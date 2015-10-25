@@ -141,7 +141,8 @@ int ConcurrentQueue::getSize(){
 	return head->count;
 }
 
-void ConcurrentQueue::push(RequestOption command, string user, string password, string file, string fileContents, int socket){
+void ConcurrentQueue::push(RequestOption command, string user, string password,
+		string file, string fileContents, int length, int socket){
 	void* raw = malloc(sizeof(QueueItem));
 	QueueItem *new_item;
 	new_item = new(raw) QueueItem;
@@ -152,6 +153,7 @@ void ConcurrentQueue::push(RequestOption command, string user, string password, 
 	new_item->file = file;
 	new_item->fileContents = fileContents;
 	new_item->socket = socket;
+	new_item->length = length;
 
 	//IMPORTANT: need to set next to NULL or there may be a seg fault
 	new_item->next = NULL;

@@ -24,6 +24,7 @@ struct QueueItem{
 	RequestOption command;
 	std::string file;
 	std::string fileContents;
+	int length;
 	int socket;
 	QueueItem *next;
 };
@@ -47,7 +48,8 @@ public:
 	ConcurrentQueue();
 	virtual ~ConcurrentQueue();
 	QueueItem* pop();
-	void push(RequestOption command, std::string user, std::string password, std::string file, std::string fileContents, int socket);
+	void push(RequestOption command, std::string user, std::string password,
+			std::string file, std::string fileContents, int length, int socket);
 	int getSize();
 	void toggleQueue();
 	void wakeQueue();
