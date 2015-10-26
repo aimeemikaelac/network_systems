@@ -25,6 +25,10 @@ typedef struct workerArgs{
 
 static void* workerThread(void* args);
 static void* handleConnection(void* args);
+static void doPut(int socket, std::string user, std::string password, std::string file, std::string fileContents);
+static void doGet(int socket, std::string user, std::string password, std::string file);
+static void doMkdir(int socket, std::string user, std::string password, std::string file);
+static void doList(int socket, std::string user, std::string password);
 
 class DFSServer {
 public:

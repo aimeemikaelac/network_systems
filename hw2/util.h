@@ -35,10 +35,6 @@
 
 enum RequestOption{ LIST,GET,PUT,MKDIR,NONE };
 
-void doPut(int socket, std::string user, std::string password, std::string file, std::string fileContents);
-void doGet(int socket, std::string user, std::string password, std::string file);
-void doMkdir(int socket, std::string user, std::string password, std::string file);
-void doList(int socket, std::string user, std::string password);
 int getdir (std::string dir, std::string base, std::vector<std::string> &files);
 bool isDirectory(std::string filePath);
 int linuxCreateDirectoryTree(std::string path, int isFile);

@@ -44,9 +44,6 @@ int getSocket(int port){
 	return socket_fd;
 }
 
-
-
-
 RequestOption getCommand(char* command){
 	int stringLength = strlen(command);
 	switch(stringLength){
@@ -72,8 +69,6 @@ RequestOption getCommand(char* command){
 	}
 }
 
-
-
 int writeToSocket(int socket_fd, string line){
 	int written = write(socket_fd, line.c_str(), line.length());
 	written += write(socket_fd, "\n", strlen("\n"));
@@ -87,7 +82,6 @@ int sendErrorBadCommand(int socket){
 int sendErrorInvalidCredentials(int socket){
 	return writeToSocket(socket, "Invalid Username/Password. Please try again.");
 }
-
 
 //1 if str ends with suffix, 0 otherwise
 bool endsWith(char* str, char* suffix){
@@ -118,9 +112,6 @@ void checkFilepathExistsAccessible(string filePath, int* exists, int* accessible
 }
 
 int getFileSize(string file){
-//	struct stat stat_buf;
-//	int rc = stat(file.c_str(), &stat_buf);
-//	return rc == 0? stat_buf.st_size : -1;
 	FILE *p_file = NULL;
 	p_file = fopen(file.c_str(),"rb");
 	fseek(p_file,0,SEEK_END);
@@ -129,6 +120,9 @@ int getFileSize(string file){
 	return size;
 }
 
+/**
+ * recursively create a Linux file system directory tree
+ */
 int linuxCreateDirectoryTree(string path, int isFile){
 	int i, exists = 0, accessible = 0;
 	char* currentwd = getcwd(NULL, 0);
@@ -149,7 +143,6 @@ int linuxCreateDirectoryTree(string path, int isFile){
 		current = strtok(NULL, "/");
 	}
 	string currentDir(currentwd);
-	cout << "Current working directory: "<<currentwd<<endl;
 	int startingSize = directories.size();
 	for(i=0; i<startingSize; i++){
 		if(isFile && (unsigned)i == directories.size() - 1){
@@ -183,16 +176,16 @@ bool isDirectory(string filePath){
 	return false;
 }
 
-//get files in a directory recursively, for all subdirs
+/*
+ * get files in a directory recursively, for all subdirs
+ */
 int getdir (string dir, string base, vector<string> &files)
 {
     DIR *dp;
     struct dirent *dirp;
-//    struct stat stat_buf;
     vector<string> directories;
     vector<string> baseDirs;
     if((dp  = opendir(dir.c_str())) == NULL) {
-//        cout << "Error(" << errno << ") opening " << dir << endl;
         return errno;
     }
     while ((dirp = readdir(dp)) != NULL) {
@@ -203,8 +196,6 @@ int getdir (string dir, string base, vector<string> &files)
     	fileStore = fileStore.append("/");
     	fileStore = fileStore.append(dirp->d_name);
     	cout << "File: "<<file<<endl;
-//    	stat(file.c_str(), &stat_buf);
-//		if(S_ISDIR(stat_buf.st_mode)){
     	if(isDirectory(file)){
     		if(file.find("..") != file.npos || file.find(".") != file.npos){
     			continue;
@@ -223,120 +214,3 @@ int getdir (string dir, string base, vector<string> &files)
     }
     return 0;
 }
-
-void doList(int socket, string user, string password){
-	int i, exists = 0, accessible = 0;
-	cout << "Parsing LIST" <<endl;
-//	list<string> files;
-	string message = "Total_Files: ";
-	char* currentwd = getcwd(NULL, 0);
-	string userDir(currentwd);
-	userDir = userDir.append("/");
-	userDir = userDir.append(user);
-	userDir = userDir.append("/");
-	userDir = userDir.append(password);
-	checkFilepathExistsAccessible(userDir, &exists, &accessible);
-	vector<string> files;
-	if(exists && accessible){
-		getdir(userDir, "", files);
-	}
-	char num[100];
-	sprintf(num, "%d", (int)files.size());
-	message.append(num);
-	message.append("\nFiles:");
-	for(i=0; (unsigned)i<files.size(); i++){
-		message.append("\n");
-		message.append(files[i]);
-	}
-	writeToSocket(socket, message);
-	free(currentwd);
-}
-
-void doMkdir(int socket, string user, string password, string file){
-	string dir(user);
-	dir.append("/");
-	dir.append(password);
-	dir.append("/");
-	dir.append(file);
-	if(linuxCreateDirectoryTree(dir, 0) < 0){
-		writeToSocket(socket, "Error: Could not create directory");
-	} else{
-		writeToSocket(socket, "Created directory");
-	}
-}
-
-void doGet(int socket, string user, string password, string file){
-	int exists = 0, accessible = 0;
-	char *currentwd = getcwd(NULL, 0);
-	string path(currentwd);
-	path.append("/");
-	path.append(user);
-	path.append("/");
-	path.append(password);
-	path.append("/");
-	path.append(file);
-	checkFilepathExistsAccessible(path, &exists, &accessible);
-	if(exists && accessible && !isDirectory(path)){
-		ifstream file(path.c_str());
-		string line;
-		//TODO: skip some lines depending on the hash storage
-		//or it may be handled by the client
-		while(!file.eof()){
-			if(getline(file, line)){
-				writeToSocket(socket, line);
-			}
-		}
-	}else{
-		writeToSocket(socket, "Error: Could not access file");
-	}
-	free(currentwd);
-}
-
-void doPut(int socket, string user, string password, string file, string fileContents){
-	int exists = 0, accessible = 0;
-	char *currentwd = getcwd(NULL, 0);
-	cout << "Doing PUT"<<endl;
-	string path("");
-//	path.append("/");
-	path.append(user);
-	path.append("/");
-	path.append(password);
-	path.append("/");
-	path.append(file);
-	linuxCreateDirectoryTree(path, 1);
-	checkFilepathExistsAccessible(path, &exists, &accessible);
-	//TODO: send a return message
-	if(exists && !accessible){
-		cout << "Error: not accessible: "<<path<<endl;
-		return;
-	} else if(isDirectory(path)){
-		cout << "Error: is directory: "<<path<<endl;
-		return;
-	} else{
-		cout << "Writing file"<<endl;
-		ofstream file;
-		file.open(path.c_str(), ofstream::out|ofstream::trunc);
-		file << fileContents;
-	}
-	free(currentwd);
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
