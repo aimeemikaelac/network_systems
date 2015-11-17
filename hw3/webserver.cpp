@@ -126,10 +126,10 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	if(uriDnsString.find("http://") == 0){
 		uriDnsString.replace(0, 7, "");
 	}
-	//strip out a trailing slash if it is the last character in string
-	if(uriDnsString.back() == '/'){
-		uriDnsString.pop_back();
-	}
+	//strip out a trailing slash, as well as everythin after
+//	if(uriDnsString.back() == '/'){
+	uriDnsString = uriDnsString.substr(0, uriDnsString.find("/"));
+//	}
 
 	cout << "DNS lookup on: "<<uriDnsString<<endl;
 	if ((status = getaddrinfo(uriDnsString.c_str(), "80", &hints, &servinfo)) != 0) {
@@ -161,7 +161,7 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	}
 
 	writeToSocket(dest_fd, request);
-	cout << "Wrote request to destination: " << request<<endl;
+//	cout << "Wrote request to destination: " << request<<endl;
 
 	int bytesReceived = 0;
 	char buffer[MAX_REQUEST_SIZE+1];
@@ -173,7 +173,7 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 		memset(buffer, 0, MAX_REQUEST_SIZE+1);
 	}
 
-	cout << "Response: "<<response<<endl;
+//	cout << "Response: "<<response<<endl;
 	entry->data = response;
 	entry->timestamp = time(NULL);
 
@@ -197,7 +197,7 @@ static bool lookupInCache(string uri, cacheEntry *entry, map<string, cacheEntry>
 
 static void replyWithEntry(int socket_fd, cacheEntry *entry){
 //	writeToSocket(socket_fd, "TEST?");
-	cout << "Writing to client: " + entry->data<< endl;
+//	cout << "Writing to client: " + entry->data<< endl;
 	writeToSocket(socket_fd, entry->data);
 	close(socket_fd);
 }
@@ -232,11 +232,11 @@ static void* workerThreadTask(void* workerArgs){
 			//get the first element off the queue
 			//skip if for some reason this is null
 		//this should block until there is something to get off the queue
-		cout << "Worker attempting to pop"<<endl;
+//		cout << "Worker attempting to pop"<<endl;
 		requestItem = args->workQueue->pop();
-		cout << "Worker popped"<<endl;
+//		cout << "Worker popped"<<endl;
 		if(requestItem == NULL){
-			cout << "Worker sleeping"<<endl;
+//			cout << "Worker sleeping"<<endl;
 			nanosleep(&sleepTime, &sleepTimeRem);
 			continue;
 		}
@@ -285,8 +285,10 @@ static void* workerThreadTask(void* workerArgs){
 			string uriString = string(uri);
 			bool validInCache = lookupInCache(uriString, &entry, contentCache, timeout);
 			if(!validInCache){
+				cout << "Cache entry does not exist or expired. Re-acquiring" <<endl;
 				handleGet(connection_fd, request, &entry);
-
+			} else{
+				cout << "Serving page from cache" <<endl;
 			}
 			//store in the cache
 			contentCache[uriString] = entry;
@@ -344,7 +346,7 @@ static void *handleConnection(void* connectionArgs){
 
 		bytesReceived = recv(args->connection_fd, recv_buffer, MAX_REQUEST_SIZE, MSG_DONTWAIT);
 		if(bytesReceived > 0){
-			cout << "Received "<<bytesReceived<< " bytes"<<endl;
+//			cout << "Received "<<bytesReceived<< " bytes"<<endl;
 			char currentReceivedBuffer[bytesReceived];
 			memcpy(currentReceivedBuffer, recv_buffer, bytesReceived);
 
@@ -384,7 +386,7 @@ static void *handleConnection(void* connectionArgs){
 				 * make a deep copy of the string so that
 				 * we can reset the request
 				 */
-				cout << "Request: "<<request<<endl;
+//				cout << "Request: "<<request<<endl;
 				workQueue->push(string(request.c_str()), args->connection_fd);
 				request = "";
 				break;
