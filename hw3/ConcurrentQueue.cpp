@@ -141,13 +141,12 @@ int ConcurrentQueue::getSize(){
 	return head->count;
 }
 
-void ConcurrentQueue::push(string data, bool keep_alive){
+void ConcurrentQueue::push(string data){
 	void* raw = malloc(sizeof(QueueItem));
 	QueueItem *new_item;
 	new_item = new(raw) QueueItem;
 
 	new_item->request = data;
-	new_item->keep_alive = keep_alive;
 
 	//IMPORTANT: need to set next to NULL or there may be a seg fault
 	new_item->next = NULL;

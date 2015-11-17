@@ -36,39 +36,28 @@
 struct connectionArgs{
 	int thread_id;
 	int connection_fd;
-	std::string documentRoot;
-	std::set<std::string> documentIndex;
-	std::map<std::string, std::string> contentTypes;
+	ConcurrentQueue *workQueue;
 };
 
 struct workerArgs{
 	int socket_fd;
-	std::string documentRoot;
-	std::set<std::string> documentIndex;
-	std::map<std::string, std::string> contentTypes;
 	ConcurrentQueue *workQueue;
-	volatile bool continue_processing;
-	volatile bool flush_queue;
-	volatile bool workerEndConnection;
-	pthread_mutex_t *lock;
-	pthread_mutex_t *worker_end_lock;
+	double timeout;
 };
+
+typedef struct cacheEntry{
+	std::string data;
+	time_t timestamp;
+} cacheEntry;
 
 class Webserver{
 	public:
-		Webserver(std::string, int port);
+		Webserver(int port, double timeout);
 		~Webserver();
 		int runServer();
-		enum ConfigOptions{ServicePort, DocumentRoot, DirectoryIndex, ContentType };
 	private:
-		int parseFile(std::string);
-		bool parseOption(std::string, ConfigOptions);
 		struct connectionArguments;
-		enum ConfigOptions;
-		std::string fileName;
-		std::string documentRoot;
-		std::set<std::string> documentIndex;
-		std::map<std::string, std::string> contentTypes;
+		double cacheTimeout;
 		unsigned servicePort;
 };
 

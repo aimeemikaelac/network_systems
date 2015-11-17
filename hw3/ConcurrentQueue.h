@@ -19,7 +19,6 @@
 
 struct QueueItem{
 	std::string request;
-	bool keep_alive;
 	QueueItem *next;
 };
 
@@ -42,7 +41,7 @@ public:
 	ConcurrentQueue();
 	virtual ~ConcurrentQueue();
 	QueueItem* pop();
-	void push(std::string data, bool keep_alive);
+	void push(std::string data);
 	int getSize();
 	void toggleQueue();
 	void wakeQueue();
