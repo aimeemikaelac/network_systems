@@ -63,7 +63,9 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	bool found = false;
 
 	//tokenize the request to get the method, uri and http version
-	char* method = strtok((char*)((request).c_str()), " ");
+	char requestCopy[request.length()];
+	memcpy(requestCopy, request.c_str(), request.length());
+	char* method = strtok((char*)(requestCopy), " ");
 	char* uri = strtok(NULL, " ");
 	char* httpVersion = strtok(NULL, " ");
 
@@ -92,6 +94,7 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	if(httpVersion == NULL){
 		//write bad http
 		write400BadHttpVersion(socket_fd, "");
+		cout << "HTTP version null" << endl;
 		return -1;
 	} else if(strncmp(httpVersion, "HTTP/1.0", 8) != 0){
 		cout << "TEST-----------------"<<endl;
@@ -101,6 +104,7 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	}
 
 	string uriString(uri);
+	string uriDnsString(uri);
 
 	//first, do a DNS query for the URL
 	int status;
@@ -114,21 +118,24 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 
 	//strip out protocol and trailing /'s. also check that url is http://,
 	//as that is all we support right now
-	if(uriString.find("http://") != 0){
-		write400BadHttpVersion(socket_fd, "");
-		return -1;
-	}
+//	if(uriDnsString.find("http://") != 0){
+//		write400BadHttpVersion(socket_fd, "");
+//		return -1;
+//	}
 	//get rid of the protocol specifier
-	uriString.replace(0, 7, "");
+	if(uriDnsString.find("http://") == 0){
+		uriDnsString.replace(0, 7, "");
+	}
 	//strip out a trailing slash if it is the last character in string
-	if(uriString.back() == '/'){
-		uriString.pop_back();
+	if(uriDnsString.back() == '/'){
+		uriDnsString.pop_back();
 	}
 
-	if ((status = getaddrinfo(uriString.c_str(), "80", &hints, &servinfo)) != 0) {
+	cout << "DNS lookup on: "<<uriDnsString<<endl;
+	if ((status = getaddrinfo(uriDnsString.c_str(), "80", &hints, &servinfo)) != 0) {
 	    cout << "DNS resolution failed" <<endl;
 	    //TODO: send 404
-	    write404(socket_fd, uriString);
+	    write404(socket_fd, uriDnsString);
 	    return -1;
 	}
 
@@ -140,6 +147,12 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 		return -1;
 	}
 
+	//strip out a keep-alive header
+	string keepAlive("Connection: keep-alive");
+	if(request.find(keepAlive) != request.npos){
+		request.replace(request.find(keepAlive), keepAlive.length(), "");
+	}
+
 	//now connect to the destination
 	if(connect(dest_fd, servinfo->ai_addr, servinfo->ai_addrlen) < 0){
 		cout << "Could not connect" << endl;
@@ -148,6 +161,7 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	}
 
 	writeToSocket(dest_fd, request);
+	cout << "Wrote request to destination: " << request<<endl;
 
 	int bytesReceived = 0;
 	char buffer[MAX_REQUEST_SIZE+1];
@@ -159,6 +173,7 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 		memset(buffer, 0, MAX_REQUEST_SIZE+1);
 	}
 
+	cout << "Response: "<<response<<endl;
 	entry->data = response;
 	entry->timestamp = time(NULL);
 
@@ -181,6 +196,8 @@ static bool lookupInCache(string uri, cacheEntry *entry, map<string, cacheEntry>
 }
 
 static void replyWithEntry(int socket_fd, cacheEntry *entry){
+//	writeToSocket(socket_fd, "TEST?");
+	cout << "Writing to client: " + entry->data<< endl;
 	writeToSocket(socket_fd, entry->data);
 	close(socket_fd);
 }
@@ -206,6 +223,7 @@ static void* workerThreadTask(void* workerArgs){
 		//flag to skip writing if there is nothing in the queue
 		struct QueueItem* requestItem;
 
+
 		//check if queue is empty and whether we should continue
 		//TODO: add a sleep time for each check
 //		if(args->workQueue->getSize() <= 0){
@@ -214,8 +232,12 @@ static void* workerThreadTask(void* workerArgs){
 			//get the first element off the queue
 			//skip if for some reason this is null
 		//this should block until there is something to get off the queue
+		cout << "Worker attempting to pop"<<endl;
 		requestItem = args->workQueue->pop();
+		cout << "Worker popped"<<endl;
 		if(requestItem == NULL){
+			cout << "Worker sleeping"<<endl;
+			nanosleep(&sleepTime, &sleepTimeRem);
 			continue;
 		}
 //		}
@@ -227,6 +249,7 @@ static void* workerThreadTask(void* workerArgs){
 		//to the returned IP address. then store the response in the cache with the
 		//timestamp of when we store it.
 		string request = requestItem->request;
+		int connection_fd = requestItem->socket_fd;
 		char tokRequest[request.size()];
 		//need to make a copy, as previous implementations had weird errors here
 		strcpy(tokRequest, request.c_str());
@@ -237,17 +260,17 @@ static void* workerThreadTask(void* workerArgs){
 		char* http_version = strtok(NULL, " ");
 		if(request_type_str == NULL){
 			//invalid method
-			write400BadMethod(args->socket_fd, "");
+			write400BadMethod(connection_fd, "");
 			continue;
 		}
 		if(uri == NULL){
 			cout << "Bad uri. Line: "<<request<<endl;
-			write400BadUri(args->socket_fd, "");
+			write400BadUri(connection_fd, "");
 			continue;
 		}
 
 		if(http_version == NULL){
-			write400BadHttpVersion(args->socket_fd, "");
+			write400BadHttpVersion(connection_fd, "");
 			continue;
 		}
 
@@ -262,17 +285,17 @@ static void* workerThreadTask(void* workerArgs){
 			string uriString = string(uri);
 			bool validInCache = lookupInCache(uriString, &entry, contentCache, timeout);
 			if(!validInCache){
-				handleGet(args->socket_fd, request, &entry);
+				handleGet(connection_fd, request, &entry);
 
 			}
 			//store in the cache
 			contentCache[uriString] = entry;
 			//send the enrty that we just looked up or received and send back
 			//also closes the socket
-			replyWithEntry(args->socket_fd, &entry);
+			replyWithEntry(connection_fd, &entry);
 		} else{
 			cout << "Not implemented yet" << endl;
-			write400BadMethod(args->socket_fd, request_type_str);
+			write400BadMethod(connection_fd, request_type_str);
 		}
 		free(requestItem);
 	}
@@ -295,6 +318,13 @@ static void *handleConnection(void* connectionArgs){
 
 	ConcurrentQueue *workQueue = args->workQueue;
 
+	//set up the variables for the sleep function
+	struct timespec sleepTime;
+	sleepTime.tv_sec = 0;
+	sleepTime.tv_nsec = 500000000; //0.5 seconds in ns
+	struct timespec sleepTimeRem;
+
+
 	/**
 	 * keep looping until the timer expires. the timer will expire after
 	 * 10 seconds after the first successful read from the socket. if a
@@ -314,6 +344,7 @@ static void *handleConnection(void* connectionArgs){
 
 		bytesReceived = recv(args->connection_fd, recv_buffer, MAX_REQUEST_SIZE, MSG_DONTWAIT);
 		if(bytesReceived > 0){
+			cout << "Received "<<bytesReceived<< " bytes"<<endl;
 			char currentReceivedBuffer[bytesReceived];
 			memcpy(currentReceivedBuffer, recv_buffer, bytesReceived);
 
@@ -322,10 +353,12 @@ static void *handleConnection(void* connectionArgs){
 
 			//need to check if we received a blank line, as this indicates that the request headers have been read
 			//since we do not support a message body in this webserver, can stop there
-			char toFind[] = {0xd, 0xa, 0xd, 0xa, 0x0};
-			if(request.find(toFind) == request.npos){
-				continue;
-			}
+			char toFind[] = {0xd, 0xa, 0xd, 0xa};//, 0x0};
+//			if(request.find(toFind) == request.npos){
+//			if(request.find("\n\n") == request.npos){
+//				cout << "Continuing" <<endl;
+//				continue;
+//			}
 
 			/**
 			 * check that the method is GET. as per email from Sangtae, we only
@@ -351,8 +384,10 @@ static void *handleConnection(void* connectionArgs){
 				 * make a deep copy of the string so that
 				 * we can reset the request
 				 */
-				workQueue->push(string(request.c_str()));
+				cout << "Request: "<<request<<endl;
+				workQueue->push(string(request.c_str()), args->connection_fd);
 				request = "";
+				break;
 			} else{
 				/**
 				 * send am invalid method message. since strtok is supposed to return
@@ -361,7 +396,11 @@ static void *handleConnection(void* connectionArgs){
 				write400BadMethod(args->connection_fd, string(method));
 				break;
 			}
-		}
+		}/* else if(bytesReceived < 0){
+			cout << "Error encountered or socket closed"<<endl;
+			break;
+		}*/
+		nanosleep(&sleepTime, &sleepTimeRem);
 
 	}
 	pthread_exit(NULL);

@@ -40,7 +40,6 @@ struct connectionArgs{
 };
 
 struct workerArgs{
-	int socket_fd;
 	ConcurrentQueue *workQueue;
 	double timeout;
 };

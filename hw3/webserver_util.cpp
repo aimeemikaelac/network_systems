@@ -61,11 +61,11 @@ int writeHeader(int socket_fd, string header, string header_value){
 }
 
 int write200(int socket_fd){
-	return writeHeader(socket_fd, "HTTP/1.1 200 OK" , "");
+	return writeHeader(socket_fd, "HTTP/1.0 200 OK" , "");
 }
 
 int write400(int socket_fd, string message){
-	return writeHeader(socket_fd, "HTTP/1.1 400 Bad Request: ", message.append("\n"));
+	return writeHeader(socket_fd, "HTTP/1.0 400 Bad Request: ", message.append("\n"));
 }
 
 int write400BadHttpVersion(int socket_fd, string message){
@@ -85,16 +85,16 @@ int write400BadUri(int socket_fd, string message){
 
 int write404(int socket_fd, string message){
 	cout << "404 message: "<<message<<endl;
-	return writeHeader(socket_fd, "HTTP/1.1 404 Not Found: ", message.append("\n"));
+	return writeHeader(socket_fd, "HTTP/1.0 404 Not Found: ", message.append("\n"));
 }
 
 int write403(int socket_fd){
 	//always forbidden, since we don't provide basic auth
-	return writeHeader(socket_fd, "HTTP/1.1 403 Forbidden", "\n");
+	return writeHeader(socket_fd, "HTTP/1.0 403 Forbidden", "\n");
 }
 
 int write501(int socket_fd, string uri){
-	return writeHeader(socket_fd, "HTTP/1.1 501 Not Implemented: ", uri.append("\n"));
+	return writeHeader(socket_fd, "HTTP/1.0 501 Not Implemented: ", uri.append("\n"));
 }
 
 int writeContentTypeHeader(int socket_fd, string content_type){

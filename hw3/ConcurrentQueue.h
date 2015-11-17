@@ -19,6 +19,7 @@
 
 struct QueueItem{
 	std::string request;
+	int socket_fd;
 	QueueItem *next;
 };
 
@@ -41,7 +42,7 @@ public:
 	ConcurrentQueue();
 	virtual ~ConcurrentQueue();
 	QueueItem* pop();
-	void push(std::string data);
+	void push(std::string data, int socket_fd);
 	int getSize();
 	void toggleQueue();
 	void wakeQueue();

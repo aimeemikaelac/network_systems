@@ -141,12 +141,13 @@ int ConcurrentQueue::getSize(){
 	return head->count;
 }
 
-void ConcurrentQueue::push(string data){
+void ConcurrentQueue::push(string data, int socket_fd){
 	void* raw = malloc(sizeof(QueueItem));
 	QueueItem *new_item;
 	new_item = new(raw) QueueItem;
 
 	new_item->request = data;
+	new_item->socket_fd = socket_fd;
 
 	//IMPORTANT: need to set next to NULL or there may be a seg fault
 	new_item->next = NULL;
