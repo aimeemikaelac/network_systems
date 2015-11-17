@@ -2,7 +2,7 @@
  * DFSClient.cpp
  *
  *  Created on: Oct 22, 2015
- *      Author: michael
+ *      Author: Michael Coughlin
  */
 
 #include "DFSClient.h"

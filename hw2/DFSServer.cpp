@@ -2,7 +2,7 @@
  * DFSServer.cpp
  *
  *  Created on: Oct 21, 2015
- *      Author: michael
+ *      Author: Michael Coughlin
  */
 
 #include "DFSServer.h"

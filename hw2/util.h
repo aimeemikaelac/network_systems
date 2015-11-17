@@ -2,7 +2,7 @@
  * util.h
  *
  *  Created on: Oct 21, 2015
- *      Author: michael
+ *      Author: Michael Coughlin
  */
 
 #ifndef UTIL_H_

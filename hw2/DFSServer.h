@@ -2,7 +2,7 @@
  * DFSServer.h
  *
  *  Created on: Oct 21, 2015
- *      Author: michael
+ *      Author: Michael Coughlin
  */
 
 #ifndef DFSSERVER_H_

@@ -2,7 +2,7 @@
  * DFSClient.h
  *
  *  Created on: Oct 22, 2015
- *      Author: michael
+ *      Author: Michael Coughlin
  */
 
 #ifndef DFSCLIENT_H_
