@@ -45,7 +45,8 @@ struct workerArgs{
 };
 
 typedef struct cacheEntry{
-	std::string data;
+	unsigned char *data;
+	int dataLength;
 	time_t timestamp;
 } cacheEntry;
 

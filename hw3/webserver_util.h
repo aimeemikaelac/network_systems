@@ -27,6 +27,8 @@ int getFileSize(std::string file);
 
 int writeToSocket(int socket_fd, std::string line);
 
+int writeCharToSocket(int socket_fd, unsigned char* buffer, int bufferLength);
+
 int writeHeader(int socket_fd, std::string header, std::string header_value);
 
 int write200(int socket_fd);

@@ -55,6 +55,11 @@ int writeToSocket(int socket_fd, string line){
 	return written;
 }
 
+int writeCharToSocket(int socket_fd, unsigned char* buffer, int bufferLength){
+	int written = write(socket_fd, buffer, bufferLength);
+	return written;
+}
+
 int writeHeader(int socket_fd, string header, string header_value){
 	string total_line = header.append(header_value);
 	return writeToSocket(socket_fd, total_line);

@@ -10,10 +10,12 @@
 
 using namespace std;
 
-Webserver::Webserver(int port=8080, double timeout=10){
+Webserver::Webserver(int port=8080, double timeout=10.0){
 	//Assign reasonable defaults to config parameters
 	servicePort = port;
 	double cacheTimeout = timeout;
+	cout << "Timeout: "<<timeout<<endl;
+	cout << "Cache timeout: "<<cacheTimeout<<endl;
 }
 
 Webserver::~Webserver(){
@@ -21,41 +23,10 @@ Webserver::~Webserver(){
 
 
 /**
- * this function will handle a GET request contained in the request variable that is associated
- * with the input socket descriptor. it uses passed in variables for document root, indices and
- * content types. this is likely not going to work on non-linux system due to both the file
- * system calls and how the file path separators are uses. if cross platform support is needed,
- * a higher-level language with platform-independent file system functionality should be used
- * instead of c++
- *
- * this is the only method handling function, as per the email
- * from Sangtae on Sept. 15, 2015:
-
-	Hi all,
-
-	The deadline for the programming assignment #1 is extended to 9/17
-	(one week extension). Even you do not know about socket programming,
-	you can learn and finish the assignment on time (just start from
-	BeeJ's guide). Also don't be shy to post any questions in the
-	discussion board. This assignment is the important precursor for the
-	other three assignments down the road, so please spend time and
-	complete it by yourself.
-
-	Also a few clarifications:
-
-	1) You do not need to implement POST and other requests. You only have
-	to implement GET.
-
-	2) after the step (4) in the previous email below, you have to check
-	whether your web browser (chrome/firefox/safari) displays the content
-	your echo/web server sends. After that, you handle
-
-	3) You may not handle Error Code 501, such as "HTTP/1.1 501 Not
-	Implemented: /csc573/video/lecture1.mpg."
-
-	Best,
-	Sangtae
-
+ * this function will handle a GET request from a proxy client to the proxy server.
+ * this is only executed when there is not a valid entry in the cache.
+ * will perform a DNS query to the URL of the destination in the HTTP GET request and
+ * then will send the client's request in a TCP message unmodified to this destination
  */
 static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	int exists, accessible;
@@ -68,6 +39,12 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	char* method = strtok((char*)(requestCopy), " ");
 	char* uri = strtok(NULL, " ");
 	char* httpVersion = strtok(NULL, " ");
+
+	//set up the variables for the sleep function
+	struct timespec sleepTime;
+	sleepTime.tv_sec = 0;
+	sleepTime.tv_nsec = 500000000; //0.5 seconds in ns
+	struct timespec sleepTimeRem;
 
 	/**
 	 * make sure that these values are valid and are what is
@@ -86,11 +63,10 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 		write400BadUri(socket_fd, "");
 		return -1;
 	}
-	//check that http version is not null and that it
-	//is one that we support. since HTTP 1.0 and 1.1
-	//are similar enough for the scope of this assignment
-	//support both
-	//TODO: FOR PROXY do not support 1.1
+	/**
+	 * check that http version is not null and that it
+	 * is one that we support.
+	 */
 	if(httpVersion == NULL){
 		//write bad http
 		write400BadHttpVersion(socket_fd, "");
@@ -116,20 +92,16 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
 
-	//strip out protocol and trailing /'s. also check that url is http://,
-	//as that is all we support right now
-//	if(uriDnsString.find("http://") != 0){
-//		write400BadHttpVersion(socket_fd, "");
-//		return -1;
-//	}
+	//get a URL for DNS lookup
 	//get rid of the protocol specifier
 	if(uriDnsString.find("http://") == 0){
 		uriDnsString.replace(0, 7, "");
 	}
-	//strip out a trailing slash, as well as everythin after
-//	if(uriDnsString.back() == '/'){
+	/**
+	 * strip out everything after and including the first forward slash
+	 * to get the base URL
+	 */
 	uriDnsString = uriDnsString.substr(0, uriDnsString.find("/"));
-//	}
 
 	cout << "DNS lookup on: "<<uriDnsString<<endl;
 	if ((status = getaddrinfo(uriDnsString.c_str(), "80", &hints, &servinfo)) != 0) {
@@ -137,6 +109,16 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	    //TODO: send 404
 	    write404(socket_fd, uriDnsString);
 	    return -1;
+	}
+	cout << "DNS entries for "<<uriDnsString<<":"<<endl;
+	struct addrinfo *p;
+	struct sockaddr_in *h;
+	for(p= servinfo; p!=NULL; p = p->ai_next){
+		h = (struct sockaddr_in *)p->ai_addr;
+		char *uriIp = inet_ntoa(h->sin_addr);
+
+		string ip(uriIp);
+		cout << ip<<endl;
 	}
 
 	//now open a socket to the ip address
@@ -159,24 +141,33 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 		write404(socket_fd, uriString);
 		return -1;
 	}
+//	cout << "Request:------------------------------"<<endl << "--------------------------"<<endl;
+//	cout << request<<endl;
 
+	//write the request from the client to the destination
 	writeToSocket(dest_fd, request);
-//	cout << "Wrote request to destination: " << request<<endl;
+	writeToSocket(dest_fd, "\n\n\n");
 
+	//receive any response from the destination
 	int bytesReceived = 0;
-	char buffer[MAX_REQUEST_SIZE+1];
-	string response = "";
+	unsigned char buffer[MAX_REQUEST_SIZE+1];
+	unsigned char *response = NULL;
 	memset(buffer, 0, MAX_REQUEST_SIZE+1);
 
-	while(recv(dest_fd, buffer, MAX_REQUEST_SIZE, 0) > 0){
-		response.append(buffer);
-		memset(buffer, 0, MAX_REQUEST_SIZE+1);
+	int received = 0;
+	int length = received;
+	while((received = recv(dest_fd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
+		response = (unsigned char*)realloc(response, length + received + 1);
+		memcpy(response + length, buffer, received);
+		length += received;
+		response[length] = '\0';
 	}
 
-//	cout << "Response: "<<response<<endl;
 	entry->data = response;
+	entry->dataLength = length;
 	entry->timestamp = time(NULL);
 
+	free(servinfo);
 	close(dest_fd);
 }
 
@@ -184,11 +175,15 @@ static bool lookupInCache(string uri, cacheEntry *entry, map<string, cacheEntry>
 	time_t currentTime = time(NULL);
 	if(contentCache.find(uri) != contentCache.end()){
 		cacheEntry currentEntry = contentCache[uri];
-		entry->data = currentEntry.data;
-		entry->timestamp = currentEntry.timestamp;
-		if(difftime(currentTime, currentEntry.timestamp) < timeout){
+		double difference;
+		if((difference = difftime(currentTime, currentEntry.timestamp)) > timeout){
+			cout << "Time difference: "<<difference<<endl;
+			cout << "Timeout: "<<timeout<<endl;
+			free(currentEntry.data);
+			contentCache.erase(uri);
 			return false;
 		} else{
+			memcpy(entry, &currentEntry, sizeof(cacheEntry));
 			return true;
 		}
 	}
@@ -196,9 +191,8 @@ static bool lookupInCache(string uri, cacheEntry *entry, map<string, cacheEntry>
 }
 
 static void replyWithEntry(int socket_fd, cacheEntry *entry){
-//	writeToSocket(socket_fd, "TEST?");
-//	cout << "Writing to client: " + entry->data<< endl;
-	writeToSocket(socket_fd, entry->data);
+	cout << "Reply length: "<<entry->dataLength<<endl;
+	writeCharToSocket(socket_fd, entry->data, entry->dataLength);
 	close(socket_fd);
 }
 
@@ -223,31 +217,20 @@ static void* workerThreadTask(void* workerArgs){
 		//flag to skip writing if there is nothing in the queue
 		struct QueueItem* requestItem;
 
-
-		//check if queue is empty and whether we should continue
-		//TODO: add a sleep time for each check
-//		if(args->workQueue->getSize() <= 0){
-//			continue;
-//		} else{
-			//get the first element off the queue
-			//skip if for some reason this is null
 		//this should block until there is something to get off the queue
-//		cout << "Worker attempting to pop"<<endl;
 		requestItem = args->workQueue->pop();
-//		cout << "Worker popped"<<endl;
 		if(requestItem == NULL){
-//			cout << "Worker sleeping"<<endl;
 			nanosleep(&sleepTime, &sleepTimeRem);
 			continue;
 		}
-//		}
 
-		//FOR PROXY: 1st, if the URL is in the cache and in the timeout, return it
-		//if the timestamp for the cache entry has not expired
-			//if it has expired, remove from cache
-		//else, extract out the request URL, do a DNS query, and send a TCP message
-		//to the returned IP address. then store the response in the cache with the
-		//timestamp of when we store it.
+		/**
+		 * 1st, if the URL is in the cache and in the timeout, return it
+		 * if the timestamp for the cache entry has not expired
+		 * else, extract out the request URL, do a DNS query, and send a TCP message
+		 * to the returned IP address. then store the response in the cache with the
+		 * timestamp of when we store it.
+		*/
 		string request = requestItem->request;
 		int connection_fd = requestItem->socket_fd;
 		char tokRequest[request.size()];
@@ -292,7 +275,7 @@ static void* workerThreadTask(void* workerArgs){
 			}
 			//store in the cache
 			contentCache[uriString] = entry;
-			//send the enrty that we just looked up or received and send back
+			//send the entry that we just looked up or received and send back
 			//also closes the socket
 			replyWithEntry(connection_fd, &entry);
 		} else{
@@ -328,51 +311,33 @@ static void *handleConnection(void* connectionArgs){
 
 
 	/**
-	 * keep looping until the timer expires. the timer will expire after
-	 * 10 seconds after the first successful read from the socket. if a
-	 * keep-alive header is detected then the timer is reset
+	 * keep looping until we have received a GET request or the socket is closed
+	 * or something we don't handle is received
 	 */
 	string request;
 	while(continueReceving){
 
 		/**
 		 * perform a non-blocking read on the buffer
-		 * if we read a non-zero # of bytes, then begin timer and
-		 * send the request to the worker
 		 */
 		//clear the receive buffer
 		memset(recv_buffer, 0, MAX_REQUEST_SIZE+1);
-		//TODO: detect when the end of the request occurs and build up request string until then
 
 		bytesReceived = recv(args->connection_fd, recv_buffer, MAX_REQUEST_SIZE, MSG_DONTWAIT);
 		if(bytesReceived > 0){
-//			cout << "Received "<<bytesReceived<< " bytes"<<endl;
 			char currentReceivedBuffer[bytesReceived];
 			memcpy(currentReceivedBuffer, recv_buffer, bytesReceived);
 
 			//append the currently received bytes to the running request string
 			request.append(currentReceivedBuffer, bytesReceived);
 
-			//need to check if we received a blank line, as this indicates that the request headers have been read
-			//since we do not support a message body in this webserver, can stop there
-			char toFind[] = {0xd, 0xa, 0xd, 0xa};//, 0x0};
-//			if(request.find(toFind) == request.npos){
-//			if(request.find("\n\n") == request.npos){
-//				cout << "Continuing" <<endl;
-//				continue;
-//			}
-
 			/**
-			 * check that the method is GET. as per email from Sangtae, we only
-			 * need to implement the GET method for this assignment. therefore,
-			 * should only put requests that are GET methods onto the work queue
+			 * check that the method is GET
 			 */
-			//first make sure that the strtok did not fail
-
 			string clone = string(request.c_str());
 			char* method = strtok((char*)clone.c_str(), " ");
 
-			//TODO: also check that it is HTTP 1.0
+			//TODO: explicitly check if the socket is still open
 			if(method == NULL){
 				//if so, send bad method
 				write400BadMethod(args->connection_fd, "");
@@ -386,7 +351,6 @@ static void *handleConnection(void* connectionArgs){
 				 * make a deep copy of the string so that
 				 * we can reset the request
 				 */
-//				cout << "Request: "<<request<<endl;
 				workQueue->push(string(request.c_str()), args->connection_fd);
 				request = "";
 				break;
@@ -398,10 +362,7 @@ static void *handleConnection(void* connectionArgs){
 				write400BadMethod(args->connection_fd, string(method));
 				break;
 			}
-		}/* else if(bytesReceived < 0){
-			cout << "Error encountered or socket closed"<<endl;
-			break;
-		}*/
+		}
 		nanosleep(&sleepTime, &sleepTimeRem);
 
 	}
@@ -409,7 +370,7 @@ static void *handleConnection(void* connectionArgs){
 }
 
 /**
- *	Runs the HTTP server on the TCP service port provided in the config file
+ *	Runs the proxy server on the configured service port
  */
 int Webserver::runServer(){
 	int socket_fd, status, new_connection_fd, rc, thread_ids = 0;
@@ -455,12 +416,6 @@ int Webserver::runServer(){
 	}
 
 	//FOR PROXY: create a single worker thread instead of a worker for each connection
-	/**
-	 * setup worker thread pthread variables and make joinable
-	 * need to be joinable so that we can ensure that all work
-	 * has been done by the worker before we close the socket
-	 * when finished
-	 */
 	ConcurrentQueue *workQueue = new ConcurrentQueue;
 
 	pthread_t worker_thread;
@@ -471,7 +426,8 @@ int Webserver::runServer(){
 	//setup inputs to the worker thread
 	struct workerArgs *workerArgsStr = new workerArgs;
 	workerArgsStr->workQueue = workQueue;
-	workerArgsStr->timeout = cacheTimeout;
+	cout << "Cache timeout: "<<(double)cacheTimeout<<"---------------------------"<<endl;
+	workerArgsStr->timeout = 10;
 
 	/**
 	 * spawn the worker thread immediately so that is ready for work
@@ -522,12 +478,11 @@ int Webserver::runServer(){
 }
 
 void printHelp(){
-	cout << "Usage: webserver [-f FILE] [-p PORT] [-h]" << endl;
+	cout << "Usage: proxyserver <port> <timeout>" << endl;
 	cout << "Options:" << endl;
-	cout << "  -f FILE\tSpecify a configuration file. If the file cannot be opened, reasonable defaults will be assumed. See README for format. The default is ./ws.conf."<<endl;
-	cout << "  -p PORT\tSpecify a service port. Will be ignored if port is set in a configuration file. The default is 8080." <<endl;
-	cout << "  -h\t\tPrint this message and exit."<<endl;
-}
+	cout << "  <port> - service port"<<endl;
+	cout << "  <timeout> - cache timeout, in seconds" <<endl;
+}cacheTimeout
 
 int main(int argc, char** argv){
 	int port = 8080;
