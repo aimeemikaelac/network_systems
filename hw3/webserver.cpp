@@ -13,9 +13,7 @@ using namespace std;
 Webserver::Webserver(int port=8080, double timeout=10.0){
 	//Assign reasonable defaults to config parameters
 	servicePort = port;
-	double cacheTimeout = timeout;
-	cout << "Timeout: "<<timeout<<endl;
-	cout << "Cache timeout: "<<cacheTimeout<<endl;
+	cacheTimeout = timeout;
 }
 
 Webserver::~Webserver(){
@@ -28,7 +26,7 @@ Webserver::~Webserver(){
  * will perform a DNS query to the URL of the destination in the HTTP GET request and
  * then will send the client's request in a TCP message unmodified to this destination
  */
-static int handleGet(int socket_fd, string request, cacheEntry *entry){
+static int handleRequest(int socket_fd, string request, cacheEntry *entry){
 	int exists, accessible;
 	string currentContentType;
 	bool found = false;
@@ -55,9 +53,9 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	if(method == NULL){
 		write400BadMethod(socket_fd, "");
 		return -1;
-	} else if(strncmp(method, "GET", 3) != 0){
+	} /*else if(strncmp(method, "GET", 3) != 0){
 		write400BadMethod(socket_fd, string(method));
-	}
+	}*/
 	if(uri == NULL){
 		//write bad uri
 		write400BadUri(socket_fd, "");
@@ -92,6 +90,12 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
 
+	cout << "Request-------------------------------------"<<endl;
+	cout << request<<endl;
+	cout << "------------------------------------------"<<endl;
+
+	string destPort = "80";
+
 	//get a URL for DNS lookup
 	//get rid of the protocol specifier
 	if(uriDnsString.find("http://") == 0){
@@ -103,8 +107,15 @@ static int handleGet(int socket_fd, string request, cacheEntry *entry){
 	 */
 	uriDnsString = uriDnsString.substr(0, uriDnsString.find("/"));
 
+	//if a port is specified, separate it out
+	if(uriDnsString.find(":") != uriDnsString.npos){
+		destPort = uriDnsString.substr(uriDnsString.find(":")+1);
+		uriDnsString = uriDnsString.substr(0, uriDnsString.find(":"));
+	}
+
 	cout << "DNS lookup on: "<<uriDnsString<<endl;
-	if ((status = getaddrinfo(uriDnsString.c_str(), "80", &hints, &servinfo)) != 0) {
+	cout << "Destination port: "<<destPort<<endl;
+	if ((status = getaddrinfo(uriDnsString.c_str(), destPort.c_str(), &hints, &servinfo)) != 0) {
 	    cout << "DNS resolution failed" <<endl;
 	    //TODO: send 404
 	    write404(socket_fd, uriDnsString);
@@ -258,9 +269,9 @@ static void* workerThreadTask(void* workerArgs){
 		}
 
 		//check that this is the correct method
-		if(strncmp(request_type_str, "GET", 3) == 0){
+//		if(strncmp(request_type_str, "GET", 3) == 0){
 			requestType = 0;
-		}
+//		}
 
 		//if is GET, then process it. else, send 400 bad method
 		if(requestType == 0){
@@ -269,7 +280,7 @@ static void* workerThreadTask(void* workerArgs){
 			bool validInCache = lookupInCache(uriString, &entry, contentCache, timeout);
 			if(!validInCache){
 				cout << "Cache entry does not exist or expired. Re-acquiring" <<endl;
-				handleGet(connection_fd, request, &entry);
+				handleRequest(connection_fd, request, &entry);
 			} else{
 				cout << "Serving page from cache" <<endl;
 			}
@@ -426,8 +437,7 @@ int Webserver::runServer(){
 	//setup inputs to the worker thread
 	struct workerArgs *workerArgsStr = new workerArgs;
 	workerArgsStr->workQueue = workQueue;
-	cout << "Cache timeout: "<<(double)cacheTimeout<<"---------------------------"<<endl;
-	workerArgsStr->timeout = 10;
+	workerArgsStr->timeout = cacheTimeout;
 
 	/**
 	 * spawn the worker thread immediately so that is ready for work
@@ -482,7 +492,7 @@ void printHelp(){
 	cout << "Options:" << endl;
 	cout << "  <port> - service port"<<endl;
 	cout << "  <timeout> - cache timeout, in seconds" <<endl;
-}cacheTimeout
+}
 
 int main(int argc, char** argv){
 	int port = 8080;
