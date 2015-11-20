@@ -1,15 +1,15 @@
 # ECEN 5023: Network Systems
-Programming assignment 1: Simple web server
+Programming assignment 3: Simple web proxy
 
 Submission by: Michael Coughlin
 
-Sept. 20, 2015
+Nov. 19, 2015
 
 ## Source code
 The source code for this assignment is contained in the following files:
 
-* webserver.cpp: The main logic of the webserver, including the main() function, 
-  configuration option parsing, network connections and connection handling.
+* webserver.cpp: The main logic of the proxy, including the main() function, 
+  network connections and connection handling.
 
 * webserver.h: The corresponding header file for this source file.
 
@@ -25,7 +25,7 @@ The source code for this assignment is contained in the following files:
 * ConcurrentQueue.h: The header file for this source file.
 
 * Makefile: A makefile with which to compile the provided source code into an executable
-  called **webserver**
+  called **proxyserver**
 
 * README.md: This file. A readme file formatted for markdown.
 
@@ -34,77 +34,43 @@ To compile the source into an executable, simply run the provided makefile in th
 containing the source code be executing *make* or *make all*. This can also be performed by
 executing the same commands that the makefile would run:
 ```
-	g++ -c -o webserver.o webserver.cpp
-	g++ -c -o webserver_util.o webserver_util.cpp
-	g++ -c -o ConcurrentQueue.o ConcurrentQueue.cpp
-	g++ webserver.o webserver_util.o ConcurrentQueue.o -o webserver -lpthread
+	g++ -std=c++11   -c -o webserver.o webserver.cpp
+	g++ -std=c++11   -c -o webserver_util.o webserver_util.cpp
+	g++ -std=c++11   -c -o ConcurrentQueue.o ConcurrentQueue.cpp
+	g++ -std=c++11 webserver.o webserver_util.o ConcurrentQueue.o -o proxyserver -lpthread
 ```
+Please note that compilation requires a compiler that supports C11.
 
 To clean the project and remove all output files, execute *make clean*, or execute directly:
 ```
 	rm -f *.o
-	rm -f webserver
+	rm -f proxyserver
 ```
 
 ## Usage
-The program is compiled to the **webserver** executable. To view the usage options, run:
-```
-	./webserver -h
-```
+The program is compiled to the **proxyserver** executable.
 
-The options are also provided here:
+The options are provided here:
 ```
-	Usage: webserver [-f FILE] [-p PORT] [-h]
+	Usage: webserver <port> <timeout>
 	Options:
-	  -f FILE	Specify a configuration file. If the file cannot be opened, reasonable 
-	  		defaults will be assumed. See below for format. The default is ./ws.conf.
-	  -p PORT	Specify a service port. Will be ignored if port is set in a configuration
-			file. The default is 8080.
-	  -h		Print the help message and exit.
+		<port> - service port
+		<timeout> - cache timeout, in seconds
 ```
-Please not that this program is intended to only be used on Linux system, as the file path
-lookups depend on Linux file path separators and file system calls. 
+Please note that this program is intended to only be used on a Linux system,
+as the system calls are Linux-kernel dependent.
 
+## Design Decisions
 
-## Configuration Options
-The configuration file follows the same format as is specified by the assignment. Below are
-the options:
-
-* To set the service port:
-```
-	Listen <port>
-```
-
-* To set the document root:
-```
-	DocumentRoot "<path_to_root>"
-```
-
-* To set the directory indices:
-```
-	DirectoryIndex <list_of_index_files>
-```
-
-* To specify content-types, any number of the following, where <file-type> is a file extension:
-```
-	<file-type> <content-type>
-```
-
-An example configuration file is provided below:
-```
-file ws.conf:
-	#service port number
-	Listen  8004
-
-	#document root
-	DocumentRoot  "/home/sha2/www"
-
-	#default web page
-	DirectoryIndex index.html index.htm index.ws
-
-	#Content-Type which the server handles
-	.html  text/html
-	.txt  text/plain
-	.png  image/png
-	.gif  image/gif
-```
+This assignment using the code from assignment #1. To implement multi-processing,
+a pthread is spawned for each connection and the request is put onto a concurrent
+queue, where a single worker thread processes the work received in-order, in the 
+exact same manner as previous assignments. The worker thread extracts the URL from
+the request from the proxy client, extracts the destination port if present, performs
+a DNS query and opens a TCP connection to the destination if possible. The entire
+request from the client is copied to this socket unmodified, other than the removal
+of any keep-alive headers. Any response is stored in a hash table stored by the request
+URL along with the time that it was received. If a client request arrives with a URL
+for an entry in the hash table, it is returned to the client if the differnce between
+the current time and the stored time for the entry is less than the timeout, rather
+than performed a network operation to retrieve it.
