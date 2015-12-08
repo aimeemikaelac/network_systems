@@ -52,7 +52,7 @@ The program is compiled to the **proxyserver** executable.
 
 The options are provided here:
 ```
-	Usage: webserver <port> <timeout>
+	Usage: proxyserver <port> <timeout>
 	Options:
 		<port> - service port
 		<timeout> - cache timeout, in seconds
