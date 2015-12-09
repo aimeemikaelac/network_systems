@@ -70,12 +70,20 @@ static void* handleConnection(void *handlerArgsStruct){
 		exit(-1);
 	}
 
+
+	if(connect(serverFd, res->ai_addr, res->ai_addrlen) == -1){
+		cout << "Could not connect to server"<<endl;
+		exit(-1);
+	}
+
 //	struct sockaddr_in serverConnectionInfo;
 //	socklen_t serverConnectionLength;
 //	if(getsockname(serverFd, (struct sockaddr*)&serverConnectionInfo, &serverConnectionLength) < 0){
 //		cout << "Could not get information about socket to server"<<endl;
 //	}
-//	int serverConnectionSourcePort = ntohs(serverConnectionInfo.sin_port);
+//	int serverConnectionSourcePort = ntohl(serverConnectionInfo.sin_port);
+
+//	cout << "ServerConnectionSourcePort: "<<serverConnectionSourcePort<<endl;
 
 	//TODO: create iptables rule to rewrite traffic so that it appears to come from client
 	char iptablesBuffer[200];
@@ -88,10 +96,6 @@ proxy]	--to-source	[client’s	IP	address]
 	system(iptablesBuffer);
 
 
-	if(connect(serverFd, res->ai_addr, res->ai_addrlen) < 0){
-		cout << "Could not connect to server"<<endl;
-		exit(-1);
-	}
 
 	cout << "Handling connection from: " << clientSrcIp << ":" << ntohs(clientSrcPort) << " to: " << clientDestIp << ":" << ntohs(clientDstPort) << endl;
 
