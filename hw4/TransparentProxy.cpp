@@ -81,9 +81,14 @@ static void* handleConnection(void *handlerArgsStruct){
 //	if(getsockname(serverFd, (struct sockaddr*)&serverConnectionInfo, &serverConnectionLength) < 0){
 //		cout << "Could not get information about socket to server"<<endl;
 //	}
-//	int serverConnectionSourcePort = ntohl(serverConnectionInfo.sin_port);
+	struct sockaddr_in serverSrcPortInfo;
+	socklen_t serverInfoLen = sizeof(sockaddr_in);
+	if(getsockname(serverFd, (sockaddr *)(&serverSrcPortInfo), &serverInfoLen) < 0){
+		cout << "Could not get information about socket to server"<<endl;
+	}
 
-//	cout << "ServerConnectionSourcePort: "<<serverConnectionSourcePort<<endl;
+	int serverConnectionSourcePort = serverSrcPortInfo.sin_port;
+	cout << "ServerConnectionSourcePort: "<<ntohs(serverConnectionSourcePort)<<endl;
 
 	//TODO: create iptables rule to rewrite traffic so that it appears to come from client
 	char iptablesBuffer[200];
@@ -92,7 +97,9 @@ static void* handleConnection(void *handlerArgsStruct){
 	 * iptables	–t	nat	–A	POSTROUTING	–p	tcp	–j	SNAT	--sport	[source	port	of	the	new	session	created	by	the
 proxy]	--to-source	[client’s	IP	address]
 	 */
-	sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -p tcp -j SNAT --sport %i --to-source %s", clientSrcPort, clientSrcIp.c_str());
+	sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -p tcp -o eth2 -j SNAT --sport %i --to-source %s", ntohs(serverConnectionSourcePort), clientSrcIp.c_str());
+	cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
+
 	system(iptablesBuffer);
 
 
@@ -211,9 +218,9 @@ int TransparentProxy::runProxy(){
 		cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
 		system(iptablesBuffer);
 		memset(iptablesBuffer, 0, 200);
-		sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -j MASQUERADE");
-		cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
-		system(iptablesBuffer);
+//		sprintf(iptablesBuffer, "iptables -t nat -i eth1 -A POSTROUTING -j MASQUERADE");
+//		cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
+//		system(iptablesBuffer);
 
 
 		while(true){
