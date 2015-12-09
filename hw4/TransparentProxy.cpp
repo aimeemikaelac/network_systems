@@ -54,12 +54,13 @@ static void* handleConnection(void *handlerArgsStruct){
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
+
 	char clientDstPortBuf[100];
 	memset(clientDstPortBuf, 0, 100);
 	sprintf(clientDstPortBuf, "%i", ntohs(clientDstPort));
 	
 	if(getaddrinfo(clientDestIp.c_str(), clientDstPortBuf, &hints, &res) != 0){
-		cout << "getaddrinfo failed for getting client destionation"<<endl;
+		cout << "getaddrinfo failed for getting client destination"<<endl;
 	}
 
 	cout << "Client destination: "<<clientDestIp<<":"<<clientDstPortBuf<<endl;
@@ -69,12 +70,12 @@ static void* handleConnection(void *handlerArgsStruct){
 		exit(-1);
 	}
 
-	struct sockaddr_in serverConnectionInfo;
-	socklen_t serverConnectionLength;
-	if(getsockname(serverFd, (struct sockaddr*)&serverConnectionInfo, &serverConnectionLength) < 0){
-		cout << "Could not get information about socket to server"<<endl;
-	}
-	int serverConnectionSourcePort = ntohl(serverConnectionInfo.sin_port);
+//	struct sockaddr_in serverConnectionInfo;
+//	socklen_t serverConnectionLength;
+//	if(getsockname(serverFd, (struct sockaddr*)&serverConnectionInfo, &serverConnectionLength) < 0){
+//		cout << "Could not get information about socket to server"<<endl;
+//	}
+//	int serverConnectionSourcePort = ntohs(serverConnectionInfo.sin_port);
 
 	//TODO: create iptables rule to rewrite traffic so that it appears to come from client
 	char iptablesBuffer[200];
@@ -83,7 +84,7 @@ static void* handleConnection(void *handlerArgsStruct){
 	 * iptables	–t	nat	–A	POSTROUTING	–p	tcp	–j	SNAT	--sport	[source	port	of	the	new	session	created	by	the
 proxy]	--to-source	[client’s	IP	address]
 	 */
-	sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -p tcp -j SNAT --sport %i --to-source %s", serverConnectionSourcePort, clientSrcIp.c_str());
+	sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -p tcp -j SNAT --sport %i --to-source %s", clientSrcPort, clientSrcIp.c_str());
 	system(iptablesBuffer);
 
 
