@@ -33,7 +33,7 @@
 #include <netinet/in.h>
 #include <cstdio>
 #include <memory>
-#include <limits.h>
+#include <climits>
 
 #define MAX_REQUEST_SIZE 8192
 
