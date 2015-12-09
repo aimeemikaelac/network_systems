@@ -34,6 +34,7 @@
 #include <cstdio>
 #include <memory>
 #include <climits>
+#include <stdint.h>
 
 #define MAX_REQUEST_SIZE 8192
 
