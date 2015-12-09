@@ -9,18 +9,19 @@
 
 using namespace std;
 
-TransparentProxy::TransparentProxy() {
-	// TODO Auto-generated constructor stub
-
+TransparentProxy::TransparentProxy(string clientSide, string serverSide, int clientSidePort) {
+	TransparentProxy::clientSide = clientSide;
+	TransparentProxy::serverSide = serverSide;
+	TransparentProxy::clientSidePort = clientSidePort;
 }
 
 TransparentProxy::~TransparentProxy() {
 	// TODO Auto-generated destructor stub
 }
 
-static void* workerThreadTask(void *workerArgsStruct){
-
-}
+//static void* workerThreadTask(void *workerArgsStruct){
+//
+//}
 
 static void* handleConnection(void *handlerArgsStruct){
 	struct connectionArgs *handlerArgs= (struct connectionArgs*)(handlerArgsStruct);
@@ -39,21 +40,98 @@ static void* handleConnection(void *handlerArgsStruct){
 	if(getsockopt(handlerArgs->connection_fd, SOL_IP, SO_ORIGINAL_DST, &clientOriginalDst, &clientInfoLen) < 0){
 		cout << "Could not get original client destination"<<endl;
 	}
+	string clientDestIp = string(inet_ntoa(clientOriginalDst.sin_addr));
+	int clientDstPort = clientOriginalDst.sin_port;
+
+	int serverFd;
+	struct sockaddr_in serverInfo;
+	serverInfo.sin_addr.s_addr = inet_addr(clientDestIp.c_str());
+	serverInfo.sin_family = AF_INET;
+	serverInfo.sin_port = clientDstPort;
+
+	if((serverFd = socket(AF_INET, SOCK_STREAM, 0)) < 0){
+		cout << "Could not get socket to connect to server"<<endl;
+	}
+
+	struct sockaddr_in serverConnectionInfo;
+	socklen_t serverConnectionLength;
+	if(getsockname(serverFd, (struct sockaddr*)&serverConnectionInfo, &serverConnectionLength) < 0){
+		cout << "Could not get information about socket to server"<<endl;
+	}
+	int serverConnectionSourcePort = ntohl(serverConnectionInfo.sin_port);
+
+	//TODO: create iptables rule to rewrite traffic so that it appears to come from client
+	char iptablesBuffer[200];
+	memset(iptablesBuffer, 0 , 200);
+	/*
+	 * iptables	–t	nat	–A	POSTROUTING	–p	tcp	–j	SNAT	--sport	[source	port	of	the	new	session	created	by	the
+proxy]	--to-source	[client’s	IP	address]
+	 */
+	sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -p tcp -j SNAT --sport %i --to-source %s", serverConnectionSourcePort, clientSrcIp.c_str());
+	system(iptablesBuffer);
+
+	if(connect(serverFd, (struct sockaddr *)&serverInfo, sizeof(struct sockaddr_in)) < 0){
+		cout << "Could not connect to server"<<endl;
+	}
+
+	cout << "Handling connection from: " << clientSrcIp << ":" << clientSrcPort << " to: " << clientDestIp << ":" << clientDstPort << endl;
+
+	char buffer [MAX_REQUEST_SIZE + 1];
+	//loop while the client and server connection are open
+	bool loop = true;
+	while(loop){
+		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
+		int receivedClient;
+		int written;
+		while((receivedClient = recv(handlerArgs->connection_fd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
+			written = write(serverFd, buffer, receivedClient);
+			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
+			if(written < 0){
+				cout << "Server socket closed. Ending connections"<<endl;
+				loop = false;
+				break;
+			}
+		}
+		if(loop == false){
+			break;
+		}
+		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
+		int receivedServer;
+		while((receivedServer = recv(serverFd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
+			written = write(handlerArgs->connection_fd, buffer, receivedServer);
+			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
+			if(written < 0){
+				cout << "Client socket closed. Ending connections"<<endl;
+				loop = false;
+				break;
+			}
+		}
+	}
+
+	close(handlerArgs->connection_fd);
+	close(serverFd);
+	pthread_exit(NULL);
 }
 
 
 /**
  * Runs a proxy that forwards requests from ip1 to ip2 and then routes backwards
  */
-int runProxy(string clientSide, string serverSide, int clientSidePort){
+int TransparentProxy::runProxy(){
 	//need to listen on the clientSide ip address
-	//any connections will be put onto queue by a thread
-	//a worker will process the work on the queue
+	//any connections will be handled directly by a spawned thread
 	int socket_fd, status, new_connection_fd, rc, thread_ids = 0;
+
 		list<pthread_t*> threads;
 		struct sockaddr_in server_addr;
 		char service[100];
 		sprintf(service, "%i", clientSidePort);
+		//TODO: create IP table rule to redirect traffic to us
+
+		char iptablesBuffer[200];
+		memset(iptablesBuffer, 0 , 200);
+		sprintf(iptablesBuffer, "iptables -t nat -A PREROUTING -p tcp -i eth0 -j DNAT --to %s:%i", clientSide.c_str(), clientSidePort);
+		system(iptablesBuffer);
 
 		//setup struct to create socket
 		server_addr.sin_family = AF_INET;
@@ -91,23 +169,23 @@ int runProxy(string clientSide, string serverSide, int clientSidePort){
 			cout << "Listening on TCP socket" << endl;
 		}
 
-		//FOR PROXY: create a single worker thread instead of a worker for each connection
-		ConcurrentQueue *workQueue = new ConcurrentQueue;
+//		//FOR PROXY: create a single worker thread instead of a worker for each connection
+//		ConcurrentQueue *workQueue = new ConcurrentQueue;
 
-		pthread_t worker_thread;
-		pthread_attr_t attr;
-		pthread_attr_init(&attr);
-		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+//		pthread_t worker_thread;
+//		pthread_attr_t attr;
+//		pthread_attr_init(&attr);
+//		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-		//setup inputs to the worker thread
-		struct workerArgs *workerArgsStr = new workerArgs;
-		workerArgsStr->workQueue = workQueue;
-
-		/**
-		 * spawn the worker thread immediately so that is ready for work
-		 * when we read from the socket
-		 */
-		pthread_create(&worker_thread, &attr, workerThreadTask, (void*)workerArgsStr);
+//		//setup inputs to the worker thread
+//		struct workerArgs *workerArgsStr = new workerArgs;
+//		workerArgsStr->workQueue = workQueue;
+//
+//		/**
+//		 * spawn the worker thread immediately so that is ready for work
+//		 * when we read from the socket
+//		 */
+//		pthread_create(&worker_thread, &attr, workerThreadTask, (void*)workerArgsStr);
 
 
 		while(true){
@@ -135,7 +213,8 @@ int runProxy(string clientSide, string serverSide, int clientSidePort){
 			pthread_t* current_connection_thread = (pthread_t*)malloc(sizeof(pthread_t));
 			struct connectionArgs *args = new connectionArgs;
 			args->connection_fd = new_connection_fd;
-			args->workQueue = workQueue;
+			args->clientSideIp = clientSide;
+			args->clientSidePort = clientSidePort;
 
 			//spawn thread. we do not wait on these, since we do not care when they finish
 			//these threads handle closing the socket themselves
@@ -148,4 +227,17 @@ int runProxy(string clientSide, string serverSide, int clientSidePort){
 			threads.push_back(current_connection_thread);
 		}
 		return 0;
+}
+
+int main(int argc, char **argv){
+	if(argc != 4){
+		cout << "Need to have arguments: <client-side interface ip> <listen port> <server-side interface ip>"<<endl;
+		return -1;
+	}
+	string clientSide(argv[1]);
+	int clientSidePort = atoi(argv[2]);
+	string serverSideIp(argv[3]);
+	TransparentProxy proxy(clientSide, serverSideIp, clientSidePort);
+	proxy.runProxy();
+	return 0;
 }

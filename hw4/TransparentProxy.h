@@ -29,6 +29,12 @@
 #include <sys/stat.h>
 #include "ConcurrentQueue.h"
 #include <sys/types.h>
+#include <linux/netfilter_ipv4.h>
+#include <netinet/in.h>
+#include <cstdio>
+#include <memory>
+
+#define MAX_REQUEST_SIZE 8192
 
 struct workerArgs{
 	ConcurrentQueue *workQueue;
@@ -38,16 +44,20 @@ struct workerArgs{
 
 struct connectionArgs{
 	int connection_fd;
-	ConcurrentQueue *workQueue;
+	std::string clientSideIp;
+	int clientSidePort;
 };
 
 class TransparentProxy {
 public:
-	TransparentProxy();
+	TransparentProxy(std::string clientSide, std::string serverSide, int clientSidePort);
 	virtual ~TransparentProxy();
+	int runProxy();
 
 private:
-	int runProxy(std::string clientSide, std::string serverSide, int clientSidePort);
+	int clientSidePort;
+	std::string clientSide;
+	std::string serverSide;
 };
 
 #endif /* TRANSPARENTPROXY_H_ */
