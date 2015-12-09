@@ -58,7 +58,9 @@ static void* handleConnection(void *handlerArgsStruct){
 	memset(clientDstPortBuf, 0, 100);
 	sprintf(clientDstPortBuf, "%i", ntohs(clientDstPort));
 	
-	getaddrinfo(clientDestIp.c_str(), clientDstPortBuf, &hints, &res);
+	if(getaddrinfo(clientDestIp.c_str(), clientDstPortBuf, &hints, &res) != 0){
+		cout << "getaddrinfo failed for getting client destionation"<<endl;
+	}
 
 	cout << "Client destination: "<<clientDestIp<<":"<<clientDstPortBuf<<endl;
 
@@ -84,8 +86,10 @@ proxy]	--to-source	[client’s	IP	address]
 	sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -p tcp -j SNAT --sport %i --to-source %s", serverConnectionSourcePort, clientSrcIp.c_str());
 	system(iptablesBuffer);
 
+
 	if(connect(serverFd, res->ai_addr, res->ai_addrlen) < 0){
 		cout << "Could not connect to server"<<endl;
+		exit(-1);
 	}
 
 	cout << "Handling connection from: " << clientSrcIp << ":" << ntohs(clientSrcPort) << " to: " << clientDestIp << ":" << ntohs(clientDstPort) << endl;
