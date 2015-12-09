@@ -60,8 +60,11 @@ static void* handleConnection(void *handlerArgsStruct){
 	
 	getaddrinfo(clientDestIp.c_str(), clientDstPortBuf, &hints, &res);
 
+	cout << "Client destination: "<<clientDestIp<<":"<<clientDstPort<<endl;
+
 	if((serverFd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0){
 		cout << "Could not get socket to connect to server"<<endl;
+		exit(-1);
 	}
 
 	struct sockaddr_in serverConnectionInfo;
