@@ -8,6 +8,10 @@
 #ifndef TRANSPARENTPROXY_H_
 #define TRANSPARENTPROXY_H_
 
+#define __STDC_LIMIT_MACROS
+
+#include <limits.h>
+//#include <libexplain/getsockname.h>
 #include <iostream>
 #include <fstream>
 #include <set>

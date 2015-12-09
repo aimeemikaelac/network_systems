@@ -26,11 +26,14 @@ TransparentProxy::~TransparentProxy() {
 static void* handleConnection(void *handlerArgsStruct){
 	struct connectionArgs *handlerArgs= (struct connectionArgs*)(handlerArgsStruct);
 	struct sockaddr_in clientSrcPortInfo;
-	socklen_t clientInfoLen;
-	if(getsockname(handlerArgs->connection_fd, (sockaddr *)&clientSrcPortInfo, &clientInfoLen) < 0){
+	socklen_t clientInfoLen = sizeof(sockaddr_in);
+	if(getsockname(handlerArgs->connection_fd, (struct sockaddr *)&clientSrcPortInfo, &clientInfoLen) == -1){
 		cout << "Could not get client src port information" << endl;
+		//fprintf(stderr, "%s\n", explain_getsockname(handlerArgs->connection_fd, &clientSrcPortInfo, &clientInfoLen));
+		//exit(-1);
 	}
 	int clientSrcPort = clientSrcPortInfo.sin_port;
+	cout << "Source port: "<<ntohs(clientSrcPort)<<endl;
 	struct sockaddr_in clientSrcIpInfo;
 	if(getpeername(handlerArgs->connection_fd, (sockaddr *)(&clientSrcIpInfo), &clientInfoLen) < 0){
 		cout << "Could not get client src IP information" << endl;
@@ -44,12 +47,20 @@ static void* handleConnection(void *handlerArgsStruct){
 	int clientDstPort = clientOriginalDst.sin_port;
 
 	int serverFd;
-	struct sockaddr_in serverInfo;
-	serverInfo.sin_addr.s_addr = inet_addr(clientDestIp.c_str());
-	serverInfo.sin_family = AF_INET;
-	serverInfo.sin_port = clientDstPort;
+	struct addrinfo hints, *res;
 
-	if((serverFd = socket(AF_INET, SOCK_STREAM, 0)) < 0){
+	// first, load up address structs with getaddrinfo():
+	
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	char clientDstPortBuf[100];
+	memset(clientDstPortBuf, 0, 100);
+	sprintf(clientDstPortBuf, "%i", clientDstPort);
+	
+	getaddrinfo(clientDestIp.c_str(), clientDstPortBuf, &hints, &res);
+
+	if((serverFd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0){
 		cout << "Could not get socket to connect to server"<<endl;
 	}
 
@@ -70,11 +81,11 @@ proxy]	--to-source	[client’s	IP	address]
 	sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -p tcp -j SNAT --sport %i --to-source %s", serverConnectionSourcePort, clientSrcIp.c_str());
 	system(iptablesBuffer);
 
-	if(connect(serverFd, (struct sockaddr *)&serverInfo, sizeof(struct sockaddr_in)) < 0){
+	if(connect(serverFd, res->ai_addr, res->ai_addrlen) < 0){
 		cout << "Could not connect to server"<<endl;
 	}
 
-	cout << "Handling connection from: " << clientSrcIp << ":" << clientSrcPort << " to: " << clientDestIp << ":" << clientDstPort << endl;
+	cout << "Handling connection from: " << clientSrcIp << ":" << ntohs(clientSrcPort) << " to: " << clientDestIp << ":" << ntohs(clientDstPort) << endl;
 
 	char buffer [MAX_REQUEST_SIZE + 1];
 	//loop while the client and server connection are open
@@ -126,12 +137,6 @@ int TransparentProxy::runProxy(){
 		struct sockaddr_in server_addr;
 		char service[100];
 		sprintf(service, "%i", clientSidePort);
-		//TODO: create IP table rule to redirect traffic to us
-
-		char iptablesBuffer[200];
-		memset(iptablesBuffer, 0 , 200);
-		sprintf(iptablesBuffer, "iptables -t nat -A PREROUTING -p tcp -i eth0 -j DNAT --to %s:%i", clientSide.c_str(), clientSidePort);
-		system(iptablesBuffer);
 
 		//setup struct to create socket
 		server_addr.sin_family = AF_INET;
@@ -157,7 +162,7 @@ int TransparentProxy::runProxy(){
 			cout << "Error binding on socket" << endl;
 			return status;
 		} else{
-			cout << "Running HTTP server on TCP port: "<<clientSidePort<<endl;
+			cout << "Running server on TCP port: "<<clientSidePort<<endl;
 		}
 
 		//listen on socket with a backlog of 10 connections
@@ -186,6 +191,17 @@ int TransparentProxy::runProxy(){
 //		 * when we read from the socket
 //		 */
 //		pthread_create(&worker_thread, &attr, workerThreadTask, (void*)workerArgsStr);
+		//TODO: create IP table rule to redirect traffic to us
+
+		char iptablesBuffer[200];
+		memset(iptablesBuffer, 0 , 200);
+		sprintf(iptablesBuffer, "iptables -t nat -A PREROUTING -p tcp -i eth1 -j DNAT --to-destination %s:%i", clientSide.c_str(), clientSidePort);
+		cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
+		system(iptablesBuffer);
+		memset(iptablesBuffer, 0, 200);
+		sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -j MASQUERADE");
+		cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
+		system(iptablesBuffer);
 
 
 		while(true){
