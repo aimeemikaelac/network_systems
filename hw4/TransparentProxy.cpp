@@ -9,6 +9,8 @@
 
 using namespace std;
 
+pthread_mutex_t portmutex = PTHREAD_MUTEX_INITIALIZER;
+
 TransparentProxy::TransparentProxy(string clientSide, string serverSide, int clientSidePort) {
 	TransparentProxy::clientSide = clientSide;
 	TransparentProxy::serverSide = serverSide;
@@ -22,6 +24,14 @@ TransparentProxy::~TransparentProxy() {
 //static void* workerThreadTask(void *workerArgsStruct){
 //
 //}
+
+static void getPortNumber(int *portOut){
+	static int port = 2000;
+	pthread_mutex_lock(&portmutex);
+	*portOut = port;
+	port++;
+	pthread_mutex_unlock(&portmutex);
+}
 
 static void* handleConnection(void *handlerArgsStruct){
 	struct connectionArgs *handlerArgs= (struct connectionArgs*)(handlerArgsStruct);
@@ -70,6 +80,30 @@ static void* handleConnection(void *handlerArgsStruct){
 		exit(-1);
 	}
 
+	//bind to socket
+
+	bool bound = false;
+	int serverConnectionSourcePort;
+	struct sockaddr_in proxy_to_server_addr;
+
+	//setup struct to create socket
+	proxy_to_server_addr.sin_family = AF_INET;
+	proxy_to_server_addr.sin_addr.s_addr = inet_addr(handlerArgs->serverSideIp.c_str());
+
+	while(!bound){
+		getPortNumber(&serverConnectionSourcePort);
+		proxy_to_server_addr.sin_port = htons(serverConnectionSourcePort);
+		if(bind(serverFd, (struct sockaddr*)&proxy_to_server_addr, sizeof(sockaddr_in)) < 0){
+			cout << "Could not bind to: "<<handlerArgs->serverSideIp<<":"<<serverConnectionSourcePort<<endl;
+		}
+	}
+
+//	while(bind(socket_fd, (sockaddr*)&server_addr, sizeof(server_addr)<0)
+//		cout << "Error binding on socket" << endl;
+//	} else{
+//		cout << "Running server on TCP port: "<<clientSidePort<<endl;
+//	}
+
 
 	if(connect(serverFd, res->ai_addr, res->ai_addrlen) == -1){
 		cout << "Could not connect to server"<<endl;
@@ -81,13 +115,13 @@ static void* handleConnection(void *handlerArgsStruct){
 //	if(getsockname(serverFd, (struct sockaddr*)&serverConnectionInfo, &serverConnectionLength) < 0){
 //		cout << "Could not get information about socket to server"<<endl;
 //	}
-	struct sockaddr_in serverSrcPortInfo;
-	socklen_t serverInfoLen = sizeof(sockaddr_in);
-	if(getsockname(serverFd, (sockaddr *)(&serverSrcPortInfo), &serverInfoLen) < 0){
-		cout << "Could not get information about socket to server"<<endl;
-	}
+//	struct sockaddr_in serverSrcPortInfo;
+//	socklen_t serverInfoLen = sizeof(sockaddr_in);
+//	if(getsockname(serverFd, (sockaddr *)(&serverSrcPortInfo), &serverInfoLen) < 0){
+//		cout << "Could not get information about socket to server"<<endl;
+//	}
 
-	int serverConnectionSourcePort = serverSrcPortInfo.sin_port;
+//	int serverConnectionSourcePort = serverSrcPortInfo.sin_port;
 	cout << "ServerConnectionSourcePort: "<<ntohs(serverConnectionSourcePort)<<endl;
 
 	//TODO: create iptables rule to rewrite traffic so that it appears to come from client
@@ -152,46 +186,46 @@ int TransparentProxy::runProxy(){
 	//any connections will be handled directly by a spawned thread
 	int socket_fd, status, new_connection_fd, rc, thread_ids = 0;
 
-		list<pthread_t*> threads;
-		struct sockaddr_in server_addr;
-		char service[100];
-		sprintf(service, "%i", clientSidePort);
+	list<pthread_t*> threads;
+	struct sockaddr_in server_addr;
+	char service[100];
+	sprintf(service, "%i", clientSidePort);
 
-		//setup struct to create socket
-		server_addr.sin_family = AF_INET;
-		server_addr.sin_addr.s_addr = inet_addr(clientSide.c_str());
-		server_addr.sin_port = htons(clientSidePort);
+	//setup struct to create socket
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_addr.s_addr = inet_addr(clientSide.c_str());
+	server_addr.sin_port = htons(clientSidePort);
 
-		cout << "Running server" << endl;
+	cout << "Running server" << endl;
 
-		//request socket from system
-		socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-		if(socket_fd < 0){
-			cout << "Error opening socket file descriptor" << endl;
-			return socket_fd;
-		}
+	//request socket from system
+	socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if(socket_fd < 0){
+		cout << "Error opening socket file descriptor" << endl;
+		return socket_fd;
+	}
 
-		//set socket reusable from previous program run
-		int yes = 1;
-		status = setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+	//set socket reusable from previous program run
+	int yes = 1;
+	status = setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 
-		//bind to socket
-		status = bind(socket_fd, (sockaddr*)&server_addr, sizeof(server_addr));
-		if(status < 0){
-			cout << "Error binding on socket" << endl;
-			return status;
-		} else{
-			cout << "Running server on TCP port: "<<clientSidePort<<endl;
-		}
+	//bind to socket
+	status = bind(socket_fd, (sockaddr*)&server_addr, sizeof(server_addr));
+	if(status < 0){
+		cout << "Error binding on socket" << endl;
+		return status;
+	} else{
+		cout << "Running server on TCP port: "<<clientSidePort<<endl;
+	}
 
-		//listen on socket with a backlog of 10 connections
-		status = listen(socket_fd, 100);
-		if(status < 0){
-			cout << "Error listening on bound socket" << endl;
-			return status;
-		} else{
-			cout << "Listening on TCP socket" << endl;
-		}
+	//listen on socket with a backlog of 10 connections
+	status = listen(socket_fd, 100);
+	if(status < 0){
+		cout << "Error listening on bound socket" << endl;
+		return status;
+	} else{
+		cout << "Listening on TCP socket" << endl;
+	}
 
 //		//FOR PROXY: create a single worker thread instead of a worker for each connection
 //		ConcurrentQueue *workQueue = new ConcurrentQueue;
@@ -210,58 +244,59 @@ int TransparentProxy::runProxy(){
 //		 * when we read from the socket
 //		 */
 //		pthread_create(&worker_thread, &attr, workerThreadTask, (void*)workerArgsStr);
-		//TODO: create IP table rule to redirect traffic to us
+	//TODO: create IP table rule to redirect traffic to us
 
-		char iptablesBuffer[200];
-		memset(iptablesBuffer, 0 , 200);
-		sprintf(iptablesBuffer, "iptables -t nat -A PREROUTING -p tcp -i eth1 -j DNAT --to-destination %s:%i", clientSide.c_str(), clientSidePort);
-		cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
-		system(iptablesBuffer);
-		memset(iptablesBuffer, 0, 200);
+	char iptablesBuffer[200];
+	memset(iptablesBuffer, 0 , 200);
+	sprintf(iptablesBuffer, "iptables -t nat -A PREROUTING -p tcp -i eth1 -j DNAT --to-destination %s:%i", clientSide.c_str(), clientSidePort);
+	cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
+	system(iptablesBuffer);
+	memset(iptablesBuffer, 0, 200);
 //		sprintf(iptablesBuffer, "iptables -t nat -i eth1 -A POSTROUTING -j MASQUERADE");
 //		cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
 //		system(iptablesBuffer);
 
 
-		while(true){
-			//accept connections until program terminated
-			char clientIp[INET_ADDRSTRLEN];
-			cout << "Accepting new connections" << endl;
+	while(true){
+		//accept connections until program terminated
+		char clientIp[INET_ADDRSTRLEN];
+		cout << "Accepting new connections" << endl;
 
-			struct sockaddr connection_addr;
-			socklen_t connection_addr_size = sizeof(sockaddr);
+		struct sockaddr connection_addr;
+		socklen_t connection_addr_size = sizeof(sockaddr);
 
-			//block on accept until new connection
-			new_connection_fd = accept(socket_fd, &connection_addr, &connection_addr_size);
-			if(new_connection_fd < 0){
-				cout << "Error accepting connection" <<endl;
-			}
-
-			//calculate ip of client
-			int ip = ((struct sockaddr_in*)(&connection_addr))->sin_addr.s_addr;
-			inet_ntop(AF_INET, &ip, clientIp, INET_ADDRSTRLEN);
-			cout << "Accepted new connection from: " << string(clientIp) << " in socket: " << new_connection_fd << endl;
-
-			//spin off new pthread to handle connection
-
-			//setup thread and inputs
-			pthread_t* current_connection_thread = (pthread_t*)malloc(sizeof(pthread_t));
-			struct connectionArgs *args = new connectionArgs;
-			args->connection_fd = new_connection_fd;
-			args->clientSideIp = clientSide;
-			args->clientSidePort = clientSidePort;
-
-			//spawn thread. we do not wait on these, since we do not care when they finish
-			//these threads handle closing the socket themselves
-			rc = pthread_create(current_connection_thread, NULL, handleConnection, (void*)args);
-			if(rc){
-				cout << "Error creating thread: "<<thread_ids<<endl;
-				return -1;
-			}
-			thread_ids++;
-			threads.push_back(current_connection_thread);
+		//block on accept until new connection
+		new_connection_fd = accept(socket_fd, &connection_addr, &connection_addr_size);
+		if(new_connection_fd < 0){
+			cout << "Error accepting connection" <<endl;
 		}
-		return 0;
+
+		//calculate ip of client
+		int ip = ((struct sockaddr_in*)(&connection_addr))->sin_addr.s_addr;
+		inet_ntop(AF_INET, &ip, clientIp, INET_ADDRSTRLEN);
+		cout << "Accepted new connection from: " << string(clientIp) << " in socket: " << new_connection_fd << endl;
+
+		//spin off new pthread to handle connection
+
+		//setup thread and inputs
+		pthread_t* current_connection_thread = (pthread_t*)malloc(sizeof(pthread_t));
+		struct connectionArgs *args = new connectionArgs;
+		args->connection_fd = new_connection_fd;
+		args->clientSideIp = clientSide;
+		args->clientSidePort = clientSidePort;
+		args->serverSideIp = serverSide;
+
+		//spawn thread. we do not wait on these, since we do not care when they finish
+		//these threads handle closing the socket themselves
+		rc = pthread_create(current_connection_thread, NULL, handleConnection, (void*)args);
+		if(rc){
+			cout << "Error creating thread: "<<thread_ids<<endl;
+			return -1;
+		}
+		thread_ids++;
+		threads.push_back(current_connection_thread);
+	}
+	return 0;
 }
 
 int main(int argc, char **argv){

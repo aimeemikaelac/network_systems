@@ -52,6 +52,7 @@ struct connectionArgs{
 	int connection_fd;
 	std::string clientSideIp;
 	int clientSidePort;
+	std::string serverSideIp;
 };
 
 class TransparentProxy {
