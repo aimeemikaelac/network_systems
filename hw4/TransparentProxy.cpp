@@ -56,11 +56,11 @@ static void* handleConnection(void *handlerArgsStruct){
 	hints.ai_socktype = SOCK_STREAM;
 	char clientDstPortBuf[100];
 	memset(clientDstPortBuf, 0, 100);
-	sprintf(clientDstPortBuf, "%i", clientDstPort);
+	sprintf(clientDstPortBuf, "%i", ntohs(clientDstPort));
 	
 	getaddrinfo(clientDestIp.c_str(), clientDstPortBuf, &hints, &res);
 
-	cout << "Client destination: "<<clientDestIp<<":"<<clientDstPort<<endl;
+	cout << "Client destination: "<<clientDestIp<<":"<<ntohs(clientDstPort)<<endl;
 
 	if((serverFd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0){
 		cout << "Could not get socket to connect to server"<<endl;
