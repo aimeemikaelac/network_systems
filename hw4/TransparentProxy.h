@@ -56,9 +56,10 @@ struct connectionArgs{
 };
 
 struct communicator{
-	int client_fd;
-	int server_fd;
+	int source_fd;
+	int dest_fd;
 	volatile bool* keepLooping;
+	pthread_mutex_t *signalLock;
 };
 
 class TransparentProxy {

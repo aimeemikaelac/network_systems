@@ -33,43 +33,35 @@ static void getPortNumber(int *portOut){
 	pthread_mutex_unlock(&portmutex);
 }
 
-static void* clientToServer(void *args){
+static void* connectSockets(void *args){
 	struct communicator *comArgs = (struct communicator*)args;
-	char buffer [MAX_REQUEST_SIZE + 1];
+	char buffer[MAX_REQUEST_SIZE + 1];
 	//loop while the client and server connection are open
-	while(comArgs->keepLooping){
+	pthread_mutex_lock(comArgs->signalLock);
+	bool local = comArgs->signalLock;
+	pthread_mutex_unlock(comArgs->signalLock);
+	while(local){
 		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
 		int receivedClient;
 		int written;
-		while((receivedClient = recv(handlerArgs->connection_fd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
-			written = write(serverFd, buffer, receivedClient);
+		if((receivedClient = recv(comArgs->source_fd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
+			written = write(comArgs->dest_fd, buffer, receivedClient);
 			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
 			if(written < 0){
-				cout << "Server socket closed. Ending connections"<<endl;
-				loop = false;
+				cout << "Dest socket closed. Ending connections"<<endl;
+				pthread_mutex_lock(comArgs->signalLock);
+				*(comArgs->keepLooping) = false;
+				pthread_mutex_unlock(comArgs->signalLock);
 				break;
 			}
 		}
-		if(loop == false){
-			break;
-		}
-		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
-		int receivedServer;
-		while((receivedServer = recv(serverFd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
-			written = write(handlerArgs->connection_fd, buffer, receivedServer);
-			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
-			if(written < 0){
-				cout << "Client socket closed. Ending connections"<<endl;
-				loop = false;
-				break;
-			}
-		}
+		pthread_mutex_lock(comArgs->signalLock);
+		local = comArgs->signalLock;
+		pthread_mutex_unlock(comArgs->signalLock);
 	}
+	pthread_exit(NULL);
 }
 
-static void* serverToClient(void *args){
-
-}
 
 static void* handleConnection(void *handlerArgsStruct){
 	struct connectionArgs *handlerArgs= (struct connectionArgs*)(handlerArgsStruct);
@@ -180,6 +172,40 @@ proxy]	--to-source	[client’s	IP	address]
 	}
 
 	cout << "Handling connection from: " << clientSrcIp << ":" << ntohs(clientSrcPort) << " to: " << clientDestIp << ":" << ntohs(clientDstPort) << endl;
+
+	volatile bool signal = true;
+	pthread_mutex_t signalLock;
+
+	pthread_mutex_init(&signalLock, NULL);
+
+	pthread_t clientToServer;
+	pthread_attr_t attr1;
+	pthread_attr_init(&attr1);
+	pthread_attr_setdetachstate(&attr1, PTHREAD_CREATE_JOINABLE);
+
+	pthread_t serverToClient;
+	pthread_attr_t attr2;
+	pthread_attr_init(&attr2);
+	pthread_attr_setdetachstate(&attr2, PTHREAD_CREATE_JOINABLE);
+
+	struct communicator clientToServerArgs;
+	clientToServerArgs.keepLooping = &signal;
+	clientToServerArgs.signalLock = &signalLock;
+	clientToServerArgs.source_fd = handlerArgs->connection_fd;
+	clientToServerArgs.dest_fd = serverFd;
+
+	struct communicator serverToClientArgs;
+	serverToClientArgs.keepLooping = &signal;
+	serverToClientArgs.signalLock = &signalLock;
+	serverToClientArgs.source_fd = serverFd;
+	serverToClientArgs.dest_fd = handlerArgs->connection_fd;
+
+	pthread_create(&clientToServer, &attr1, connectSockets, (void*)(&clientToServerArgs));
+	pthread_create(&serverToClient, &attr2, connectSockets, (void*)(&serverToClientArgs));
+
+	void* status;
+	pthread_join(clientToServer, &status);
+	pthread_join(serverToClient, &status);
 
 
 	close(handlerArgs->connection_fd);
