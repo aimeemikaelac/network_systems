@@ -33,6 +33,44 @@ static void getPortNumber(int *portOut){
 	pthread_mutex_unlock(&portmutex);
 }
 
+static void* clientToServer(void *args){
+	struct communicator *comArgs = (struct communicator*)args;
+	char buffer [MAX_REQUEST_SIZE + 1];
+	//loop while the client and server connection are open
+	while(comArgs->keepLooping){
+		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
+		int receivedClient;
+		int written;
+		while((receivedClient = recv(handlerArgs->connection_fd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
+			written = write(serverFd, buffer, receivedClient);
+			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
+			if(written < 0){
+				cout << "Server socket closed. Ending connections"<<endl;
+				loop = false;
+				break;
+			}
+		}
+		if(loop == false){
+			break;
+		}
+		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
+		int receivedServer;
+		while((receivedServer = recv(serverFd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
+			written = write(handlerArgs->connection_fd, buffer, receivedServer);
+			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
+			if(written < 0){
+				cout << "Client socket closed. Ending connections"<<endl;
+				loop = false;
+				break;
+			}
+		}
+	}
+}
+
+static void* serverToClient(void *args){
+
+}
+
 static void* handleConnection(void *handlerArgsStruct){
 	struct connectionArgs *handlerArgs= (struct connectionArgs*)(handlerArgsStruct);
 	struct sockaddr_in clientSrcPortInfo;
@@ -140,37 +178,7 @@ proxy]	--to-source	[client’s	IP	address]
 
 	cout << "Handling connection from: " << clientSrcIp << ":" << ntohs(clientSrcPort) << " to: " << clientDestIp << ":" << ntohs(clientDstPort) << endl;
 
-	char buffer [MAX_REQUEST_SIZE + 1];
-	//loop while the client and server connection are open
-	bool loop = true;
-	while(loop){
-		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
-		int receivedClient;
-		int written;
-		while((receivedClient = recv(handlerArgs->connection_fd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
-			written = write(serverFd, buffer, receivedClient);
-			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
-			if(written < 0){
-				cout << "Server socket closed. Ending connections"<<endl;
-				loop = false;
-				break;
-			}
-		}
-		if(loop == false){
-			break;
-		}
-		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
-		int receivedServer;
-		while((receivedServer = recv(serverFd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
-			written = write(handlerArgs->connection_fd, buffer, receivedServer);
-			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
-			if(written < 0){
-				cout << "Client socket closed. Ending connections"<<endl;
-				loop = false;
-				break;
-			}
-		}
-	}
+
 
 	close(handlerArgs->connection_fd);
 	close(serverFd);

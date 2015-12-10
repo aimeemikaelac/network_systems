@@ -55,6 +55,12 @@ struct connectionArgs{
 	std::string serverSideIp;
 };
 
+struct communicator{
+	int client_fd;
+	int server_fd;
+	volatile bool* keepLooping;
+};
+
 class TransparentProxy {
 public:
 	TransparentProxy(std::string clientSide, std::string serverSide, int clientSidePort);
