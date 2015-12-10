@@ -88,13 +88,16 @@ static void* handleConnection(void *handlerArgsStruct){
 
 	//setup struct to create socket
 	proxy_to_server_addr.sin_family = AF_INET;
-	proxy_to_server_addr.sin_addr.s_addr = inet_addr(handlerArgs->serverSideIp.c_str());
+	proxy_to_server_addr.sin_addr.s_addr = inet_addr(handlerArgs->serverSideIp.c_str());//INADDR_ANY
 
 	while(!bound){
 		getPortNumber(&serverConnectionSourcePort);
 		proxy_to_server_addr.sin_port = htons(serverConnectionSourcePort);
 		if(bind(serverFd, (struct sockaddr*)&proxy_to_server_addr, sizeof(sockaddr_in)) < 0){
 			cout << "Could not bind to: "<<handlerArgs->serverSideIp<<":"<<serverConnectionSourcePort<<endl;
+		} else{
+			bound = true;
+			cout << "Successfully bound to: "<<handlerArgs->serverSideIp<<":"<<serverConnectionSourcePort<<endl;
 		}
 	}
 
@@ -105,10 +108,6 @@ static void* handleConnection(void *handlerArgsStruct){
 //	}
 
 
-	if(connect(serverFd, res->ai_addr, res->ai_addrlen) == -1){
-		cout << "Could not connect to server"<<endl;
-		exit(-1);
-	}
 
 //	struct sockaddr_in serverConnectionInfo;
 //	socklen_t serverConnectionLength;
@@ -122,7 +121,7 @@ static void* handleConnection(void *handlerArgsStruct){
 //	}
 
 //	int serverConnectionSourcePort = serverSrcPortInfo.sin_port;
-	cout << "ServerConnectionSourcePort: "<<ntohs(serverConnectionSourcePort)<<endl;
+	cout << "ServerConnectionSourcePort: "<<serverConnectionSourcePort<<endl;
 
 	//TODO: create iptables rule to rewrite traffic so that it appears to come from client
 	char iptablesBuffer[200];
@@ -131,12 +130,16 @@ static void* handleConnection(void *handlerArgsStruct){
 	 * iptables	–t	nat	–A	POSTROUTING	–p	tcp	–j	SNAT	--sport	[source	port	of	the	new	session	created	by	the
 proxy]	--to-source	[client’s	IP	address]
 	 */
-	sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -p tcp -o eth2 -j SNAT --sport %i --to-source %s", ntohs(serverConnectionSourcePort), clientSrcIp.c_str());
+	sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -p tcp -d %s --sport %i -j SNAT --to-source %s", clientDestIp.c_str(), serverConnectionSourcePort, clientSrcIp.c_str());
 	cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
 
 	system(iptablesBuffer);
 
 
+	if(connect(serverFd, res->ai_addr, res->ai_addrlen) == -1){
+		cout << "Could not connect to server"<<endl;
+		pthread_exit(NULL);
+	}
 
 	cout << "Handling connection from: " << clientSrcIp << ":" << ntohs(clientSrcPort) << " to: " << clientDestIp << ":" << ntohs(clientDstPort) << endl;
 
@@ -147,7 +150,8 @@ proxy]	--to-source	[client’s	IP	address]
 		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
 		int receivedClient;
 		int written;
-		while((receivedClient = recv(handlerArgs->connection_fd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
+		if((receivedClient = recv(handlerArgs->connection_fd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
+			cout << "received "<<receivedClient<<" bytes from client"<<endl;
 			written = write(serverFd, buffer, receivedClient);
 			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
 			if(written < 0){
@@ -161,7 +165,8 @@ proxy]	--to-source	[client’s	IP	address]
 		}
 		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
 		int receivedServer;
-		while((receivedServer = recv(serverFd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
+		if((receivedServer = recv(serverFd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
+			cout << "received "<<receivedServer<<" bytes from server"<<endl;
 			written = write(handlerArgs->connection_fd, buffer, receivedServer);
 			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
 			if(written < 0){
