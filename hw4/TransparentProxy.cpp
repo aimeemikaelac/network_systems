@@ -205,6 +205,8 @@ static void* handleConnection(void *handlerArgsStruct){
 	char line[200];
 	sprintf(line, "%s %s %i %s %i %i", date.c_str(), clientSrcIp.c_str(), clientSrcPort, clientDestIp.c_str(), clientDstPort, clientToServerBytes + serverToClientBytes);
 
+	cout << "Logging: "<< line << endl;
+
 	log(string(line));
 
 	close(handlerArgs->connection_fd);
