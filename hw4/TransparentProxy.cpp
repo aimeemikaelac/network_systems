@@ -10,6 +10,7 @@
 using namespace std;
 
 pthread_mutex_t portmutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t logmutex = PTHREAD_MUTEX_INITIALIZER;
 
 TransparentProxy::TransparentProxy(string clientSide, string serverSide, int clientSidePort) {
 	TransparentProxy::clientSide = clientSide;
@@ -18,12 +19,16 @@ TransparentProxy::TransparentProxy(string clientSide, string serverSide, int cli
 }
 
 TransparentProxy::~TransparentProxy() {
-	// TODO Auto-generated destructor stub
 }
 
-//static void* workerThreadTask(void *workerArgsStruct){
-//
-//}
+static void log(string line){
+	ofstream myfile;
+	pthread_mutex_lock(&logmutex);
+	myfile.open ("transparentproxy.log", ios::ate | ios::out);
+	myfile << line << endl;
+	myfile.close();
+	pthread_mutex_unlock(&logmutex);
+}
 
 static void getPortNumber(int *portOut){
 	static int port = 2000;
@@ -131,35 +136,11 @@ static void* handleConnection(void *handlerArgsStruct){
 		}
 	}
 
-//	while(bind(socket_fd, (sockaddr*)&server_addr, sizeof(server_addr)<0)
-//		cout << "Error binding on socket" << endl;
-//	} else{
-//		cout << "Running server on TCP port: "<<clientSidePort<<endl;
-//	}
-
-
-
-//	struct sockaddr_in serverConnectionInfo;
-//	socklen_t serverConnectionLength;
-//	if(getsockname(serverFd, (struct sockaddr*)&serverConnectionInfo, &serverConnectionLength) < 0){
-//		cout << "Could not get information about socket to server"<<endl;
-//	}
-//	struct sockaddr_in serverSrcPortInfo;
-//	socklen_t serverInfoLen = sizeof(sockaddr_in);
-//	if(getsockname(serverFd, (sockaddr *)(&serverSrcPortInfo), &serverInfoLen) < 0){
-//		cout << "Could not get information about socket to server"<<endl;
-//	}
-
-//	int serverConnectionSourcePort = serverSrcPortInfo.sin_port;
 	cout << "ServerConnectionSourcePort: "<<serverConnectionSourcePort<<endl;
 
-	//TODO: create iptables rule to rewrite traffic so that it appears to come from client
 	char iptablesBuffer[200];
 	memset(iptablesBuffer, 0 , 200);
-	/*
-	 * iptables	–t	nat	–A	POSTROUTING	–p	tcp	–j	SNAT	--sport	[source	port	of	the	new	session	created	by	the
-proxy]	--to-source	[client’s	IP	address]
-	 */
+
 	sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -p tcp -d %s --sport %i -j SNAT --to-source %s", clientDestIp.c_str(), serverConnectionSourcePort, clientSrcIp.c_str());
 	cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
 
@@ -172,6 +153,16 @@ proxy]	--to-source	[client’s	IP	address]
 	}
 
 	cout << "Handling connection from: " << clientSrcIp << ":" << ntohs(clientSrcPort) << " to: " << clientDestIp << ":" << ntohs(clientDstPort) << endl;
+	time_t rawtime;
+	struct tm * timeinfo;
+	char buffer[80];
+
+	time (&rawtime);
+	timeinfo = localtime(&rawtime);
+
+	strftime(buffer,80,"%I:%M:%S",timeinfo);
+	string date(buffer);
+
 
 	volatile bool signal = true;
 	pthread_mutex_t signalLock;
@@ -189,16 +180,20 @@ proxy]	--to-source	[client’s	IP	address]
 	pthread_attr_setdetachstate(&attr2, PTHREAD_CREATE_JOINABLE);
 
 	struct communicator clientToServerArgs;
+	int clientToServerBytes = 0;
 	clientToServerArgs.keepLooping = &signal;
 	clientToServerArgs.signalLock = &signalLock;
 	clientToServerArgs.source_fd = handlerArgs->connection_fd;
 	clientToServerArgs.dest_fd = serverFd;
+	clientToServerArgs.bytesTotal = &clientToServerBytes;
 
 	struct communicator serverToClientArgs;
+	int serverToClientBytes = 0;
 	serverToClientArgs.keepLooping = &signal;
 	serverToClientArgs.signalLock = &signalLock;
 	serverToClientArgs.source_fd = serverFd;
 	serverToClientArgs.dest_fd = handlerArgs->connection_fd;
+	serverToClientArgs.bytesTotal = &serverToClientBytes;
 
 	pthread_create(&clientToServer, &attr1, connectSockets, (void*)(&clientToServerArgs));
 	pthread_create(&serverToClient, &attr2, connectSockets, (void*)(&serverToClientArgs));
@@ -207,6 +202,10 @@ proxy]	--to-source	[client’s	IP	address]
 	pthread_join(clientToServer, &status);
 	pthread_join(serverToClient, &status);
 
+	char line[200];
+	sprintf(line, "%s %s %i %s %i", date.c_str(), clientSrcIp.c_str(), clientSrcPort, clientDestIp.c_str(), clientDstPort, clientToServerBytes + serverToClientBytes);
+
+	log(string(line));
 
 	close(handlerArgs->connection_fd);
 	close(serverFd);
@@ -263,24 +262,6 @@ int TransparentProxy::runProxy(){
 		cout << "Listening on TCP socket" << endl;
 	}
 
-//		//FOR PROXY: create a single worker thread instead of a worker for each connection
-//		ConcurrentQueue *workQueue = new ConcurrentQueue;
-
-//		pthread_t worker_thread;
-//		pthread_attr_t attr;
-//		pthread_attr_init(&attr);
-//		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-
-//		//setup inputs to the worker thread
-//		struct workerArgs *workerArgsStr = new workerArgs;
-//		workerArgsStr->workQueue = workQueue;
-//
-//		/**
-//		 * spawn the worker thread immediately so that is ready for work
-//		 * when we read from the socket
-//		 */
-//		pthread_create(&worker_thread, &attr, workerThreadTask, (void*)workerArgsStr);
-	//TODO: create IP table rule to redirect traffic to us
 
 	char iptablesBuffer[200];
 	memset(iptablesBuffer, 0 , 200);
@@ -288,10 +269,6 @@ int TransparentProxy::runProxy(){
 	cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
 	system(iptablesBuffer);
 	memset(iptablesBuffer, 0, 200);
-//		sprintf(iptablesBuffer, "iptables -t nat -i eth1 -A POSTROUTING -j MASQUERADE");
-//		cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
-//		system(iptablesBuffer);
-
 
 	while(true){
 		//accept connections until program terminated

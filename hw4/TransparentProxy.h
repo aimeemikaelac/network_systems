@@ -31,7 +31,6 @@
 #include <string>
 #include <stdio.h>
 #include <sys/stat.h>
-#include "ConcurrentQueue.h"
 #include <sys/types.h>
 #include <linux/netfilter_ipv4.h>
 #include <netinet/in.h>
@@ -39,6 +38,7 @@
 #include <memory>
 #include <climits>
 #include <stdint.h>
+#include <ctime>
 
 #define MAX_REQUEST_SIZE 8192
 
@@ -60,6 +60,7 @@ struct communicator{
 	int dest_fd;
 	volatile bool* keepLooping;
 	pthread_mutex_t *signalLock;
+	int *bytesTotal;
 };
 
 class TransparentProxy {
