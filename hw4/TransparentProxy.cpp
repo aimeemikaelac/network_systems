@@ -49,7 +49,7 @@ static void* connectSockets(void *args){
 		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
 		int receivedClient;
 		int written;
-		if((receivedClient = recv(comArgs->source_fd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
+		if((receivedClient = recv(comArgs->source_fd, buffer, MAX_REQUEST_SIZE, MSG_DONTWAIT)) > 0){
 			written = write(comArgs->dest_fd, buffer, receivedClient);
 			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
 			if(written < 0){
