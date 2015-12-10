@@ -24,10 +24,23 @@ TransparentProxy::~TransparentProxy() {
 static void log(string line){
 	ofstream myfile;
 	pthread_mutex_lock(&logmutex);
-	myfile.open ("transparentproxy.log", ios::ate | ios::out);
+	myfile.open ("transparentproxy.log", ios::app);
 	myfile << line << endl;
 	myfile.close();
 	pthread_mutex_unlock(&logmutex);
+}
+
+bool connected(int sock)
+{
+     char buf;
+     int err = recv(sock, &buf, 1, MSG_PEEK);
+     if(err < 0)
+     {
+	cout << "Not connected" <<endl;
+          return false;
+     }
+	cout << "Connected: "<<sock<<endl;
+     return true;
 }
 
 static void getPortNumber(int *portOut){
@@ -49,16 +62,23 @@ static void* connectSockets(void *args){
 		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
 		int receivedClient;
 		int written;
-		if((receivedClient = recv(comArgs->source_fd, buffer, MAX_REQUEST_SIZE, MSG_DONTWAIT)) > 0){
+		if((receivedClient = recv(comArgs->source_fd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
 			written = write(comArgs->dest_fd, buffer, receivedClient);
 			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
-			if(written < 0){
-				cout << "Dest socket closed. Ending connections"<<endl;
+			if(written < 0 || receivedClient < 0){
+				cout << "socket closed. Ending connections"<<endl;
 				pthread_mutex_lock(comArgs->signalLock);
 				*(comArgs->keepLooping) = false;
 				pthread_mutex_unlock(comArgs->signalLock);
 				break;
 			}
+			*(comArgs->bytesTotal) += written;
+		} else{
+			cout << "socket closed. Ending connections"<<endl;
+			pthread_mutex_lock(comArgs->signalLock);
+			*(comArgs->keepLooping) = false;
+			pthread_mutex_unlock(comArgs->signalLock);
+			break;
 		}
 		pthread_mutex_lock(comArgs->signalLock);
 		local = comArgs->signalLock;
