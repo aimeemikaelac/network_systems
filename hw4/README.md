@@ -72,3 +72,7 @@ server-to-client and client-to-server, respectively. Each connection also binds 
 a unique port number and writes to the log file in a thread-safe manner. The
 connection is terminated when either the client socket or server socket is closed,
 and managed using a shared concurrent variable between the threads.
+
+The CentOS images provided by the assignment were used to create VMs, with a single
+VM cloned into three instances used to implement the assignment testbed. KVM was
+used as the hypervisor and Open vSwitch was used to implement the virtual network.
