@@ -65,14 +65,12 @@ static void* connectSockets(void *args){
 			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
 			//if the write failed, then the destination socket is likely closed
 			if(written < 0){
-				cout << "socket closed. Ending connections"<<endl;
 				break;
 			}
 			//add the bytes we have processed
 			*(comArgs->bytesTotal) += written;
 		} else{
 			//if the read failed, the source socket is likely closed
-			cout << "socket closed. Ending connections"<<endl;
 			break;
 		}
 		pthread_mutex_lock(comArgs->signalLock);
@@ -224,6 +222,7 @@ static void* handleConnection(void *handlerArgsStruct){
 		log(string(line));
 
 		close(serverFd);
+		cout << "Ending connection from: " << clientSrcIp << ":" << ntohs(clientSrcPort) << " to: " << clientDestIp << ":" << ntohs(clientDstPort) << endl;
 	} else{
 		cout << "Error proxying connection"<<endl;
 	}
