@@ -21,6 +21,9 @@ TransparentProxy::TransparentProxy(string clientSide, string serverSide, int cli
 TransparentProxy::~TransparentProxy() {
 }
 
+/**
+ * Logs a line to the log file in a thread-safe manner
+ */
 static void log(string line){
 	ofstream myfile;
 	pthread_mutex_lock(&logmutex);
@@ -30,19 +33,9 @@ static void log(string line){
 	pthread_mutex_unlock(&logmutex);
 }
 
-bool connected(int sock)
-{
-     char buf;
-     int err = recv(sock, &buf, 1, MSG_PEEK);
-     if(err < 0)
-     {
-	cout << "Not connected" <<endl;
-          return false;
-     }
-	cout << "Connected: "<<sock<<endl;
-     return true;
-}
-
+/**
+ * Generates a port number for the proxy source port in a thread-safe manner
+ */
 static void getPortNumber(int *portOut){
 	static int port = 2000;
 	pthread_mutex_lock(&portmutex);
@@ -51,186 +44,190 @@ static void getPortNumber(int *portOut){
 	pthread_mutex_unlock(&portmutex);
 }
 
+/**
+ * A task for a thread to read from one socket and write the results to another
+ */
 static void* connectSockets(void *args){
 	struct communicator *comArgs = (struct communicator*)args;
 	char buffer[MAX_REQUEST_SIZE + 1];
-	//loop while the client and server connection are open
+	int receivedClient, written;
+	//get value of initial control flag
 	pthread_mutex_lock(comArgs->signalLock);
 	bool local = comArgs->signalLock;
 	pthread_mutex_unlock(comArgs->signalLock);
+	//loop while the control flag says to
 	while(local){
 		memset(buffer, 0, MAX_REQUEST_SIZE + 1);
-		int receivedClient;
-		int written;
+		//read from the source socket
 		if((receivedClient = recv(comArgs->source_fd, buffer, MAX_REQUEST_SIZE, 0)) > 0){
+			//write the data to the destination
 			written = write(comArgs->dest_fd, buffer, receivedClient);
 			memset(buffer, 0, MAX_REQUEST_SIZE + 1);
-			if(written < 0 || receivedClient < 0){
+			//if the write failed, then the destination socket is likely closed
+			if(written < 0){
 				cout << "socket closed. Ending connections"<<endl;
-				pthread_mutex_lock(comArgs->signalLock);
-				*(comArgs->keepLooping) = false;
-				pthread_mutex_unlock(comArgs->signalLock);
 				break;
 			}
+			//add the bytes we have processed
 			*(comArgs->bytesTotal) += written;
 		} else{
+			//if the read failed, the source socket is likely closed
 			cout << "socket closed. Ending connections"<<endl;
-			pthread_mutex_lock(comArgs->signalLock);
-			*(comArgs->keepLooping) = false;
-			pthread_mutex_unlock(comArgs->signalLock);
 			break;
 		}
 		pthread_mutex_lock(comArgs->signalLock);
 		local = comArgs->signalLock;
 		pthread_mutex_unlock(comArgs->signalLock);
 	}
+	//set the flag so that other threads will also stop
+	//we only get here if we break out of a loop on a closed socket,
+	//or if another thread already toggled the flag
+	pthread_mutex_lock(comArgs->signalLock);
+	*(comArgs->keepLooping) = false;
+	pthread_mutex_unlock(comArgs->signalLock);
 	pthread_exit(NULL);
 }
 
-
+/**
+ * Task for a thread to handle a connection from a client
+ */
 static void* handleConnection(void *handlerArgsStruct){
+	int clientSrcPort, clientDstPort, serverFd, serverConnectionSourcePort, clientToServerBytes = 0, serverToClientBytes = 0;
+	char clientDstPortBuf[100], iptablesBuffer[200], buffer[80], line[200];
+	bool bound = false, proceed = true;
+	time_t rawtime;
+	struct tm * timeinfo;
+	struct sockaddr_in clientSrcPortInfo, clientSrcIpInfo, clientOriginalDst, proxy_to_server_addr;
+	struct addrinfo hints, *res;
+	pthread_mutex_t signalLock;
+	pthread_t clientToServer, serverToClient;
+	pthread_attr_t attr1, attr2;
+	void* status;
+	volatile bool signal = true;
+	struct communicator clientToServerArgs, serverToClientArgs;
+
 	struct connectionArgs *handlerArgs= (struct connectionArgs*)(handlerArgsStruct);
-	struct sockaddr_in clientSrcPortInfo;
+
+	//get client src port
 	socklen_t clientInfoLen = sizeof(sockaddr_in);
 	if(getsockname(handlerArgs->connection_fd, (struct sockaddr *)&clientSrcPortInfo, &clientInfoLen) == -1){
 		cout << "Could not get client src port information" << endl;
-		//fprintf(stderr, "%s\n", explain_getsockname(handlerArgs->connection_fd, &clientSrcPortInfo, &clientInfoLen));
-		//exit(-1);
+		proceed = false;
 	}
-	int clientSrcPort = clientSrcPortInfo.sin_port;
-	cout << "Source port: "<<ntohs(clientSrcPort)<<endl;
-	struct sockaddr_in clientSrcIpInfo;
+	clientSrcPort = clientSrcPortInfo.sin_port;
+
+	//get client src IP
 	if(getpeername(handlerArgs->connection_fd, (sockaddr *)(&clientSrcIpInfo), &clientInfoLen) < 0){
 		cout << "Could not get client src IP information" << endl;
+		proceed = false;
 	}
 	string clientSrcIp = string(inet_ntoa(clientSrcIpInfo.sin_addr));
-	struct sockaddr_in clientOriginalDst;
+
+	//get client dest IP and port
 	if(getsockopt(handlerArgs->connection_fd, SOL_IP, SO_ORIGINAL_DST, &clientOriginalDst, &clientInfoLen) < 0){
 		cout << "Could not get original client destination"<<endl;
+		proceed = false;
 	}
 	string clientDestIp = string(inet_ntoa(clientOriginalDst.sin_addr));
-	int clientDstPort = clientOriginalDst.sin_port;
+	clientDstPort = clientOriginalDst.sin_port;
 
-	int serverFd;
-	struct addrinfo hints, *res;
-
+	//create connection to client destination
 	// first, load up address structs with getaddrinfo():
-	
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 
-	char clientDstPortBuf[100];
 	memset(clientDstPortBuf, 0, 100);
 	sprintf(clientDstPortBuf, "%i", ntohs(clientDstPort));
-	
+
+	//lookup destination info
 	if(getaddrinfo(clientDestIp.c_str(), clientDstPortBuf, &hints, &res) != 0){
 		cout << "getaddrinfo failed for getting client destination"<<endl;
+		proceed = false;
 	}
 
-	cout << "Client destination: "<<clientDestIp<<":"<<clientDstPortBuf<<endl;
-
-	if((serverFd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0){
+	//create socket for connection to server
+	if(proceed && (serverFd = socket(res->ai_family, res->ai_socktype, res->ai_protocol)) < 0){
 		cout << "Could not get socket to connect to server"<<endl;
-		exit(-1);
+		proceed = false;
 	}
 
-	//bind to socket
-
-	bool bound = false;
-	int serverConnectionSourcePort;
-	struct sockaddr_in proxy_to_server_addr;
-
-	//setup struct to create socket
+	//setup struct for binding to a specific port number
 	proxy_to_server_addr.sin_family = AF_INET;
 	proxy_to_server_addr.sin_addr.s_addr = inet_addr(handlerArgs->serverSideIp.c_str());//INADDR_ANY
 
-	while(!bound){
+	while(!bound && proceed){
+		//get a port number that is not in use by another thread
 		getPortNumber(&serverConnectionSourcePort);
 		proxy_to_server_addr.sin_port = htons(serverConnectionSourcePort);
+		//bind to this port number so we can create an iptables rule using it
 		if(bind(serverFd, (struct sockaddr*)&proxy_to_server_addr, sizeof(sockaddr_in)) < 0){
 			cout << "Could not bind to: "<<handlerArgs->serverSideIp<<":"<<serverConnectionSourcePort<<endl;
 		} else{
+			//if this fails, then another process is using this port. try again
+			//TODO: stop when we run out of port numbers (unlikely to happen)
 			bound = true;
-			cout << "Successfully bound to: "<<handlerArgs->serverSideIp<<":"<<serverConnectionSourcePort<<endl;
 		}
 	}
 
-	cout << "ServerConnectionSourcePort: "<<serverConnectionSourcePort<<endl;
-
-	char iptablesBuffer[200];
+	//write an ip tables rule to SNAT all traffic to the client's dest
 	memset(iptablesBuffer, 0 , 200);
-
 	sprintf(iptablesBuffer, "iptables -t nat -A POSTROUTING -p tcp -d %s --sport %i -j SNAT --to-source %s", clientDestIp.c_str(), serverConnectionSourcePort, clientSrcIp.c_str());
 	cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
-
 	system(iptablesBuffer);
 
-
-	if(connect(serverFd, res->ai_addr, res->ai_addrlen) == -1){
+	//connect to the server
+	if(proceed && connect(serverFd, res->ai_addr, res->ai_addrlen) == -1){
 		cout << "Could not connect to server"<<endl;
-		pthread_exit(NULL);
+		proceed = false;
 	}
 
 	cout << "Handling connection from: " << clientSrcIp << ":" << ntohs(clientSrcPort) << " to: " << clientDestIp << ":" << ntohs(clientDstPort) << endl;
-	time_t rawtime;
-	struct tm * timeinfo;
-	char buffer[80];
 
+	//set time for logging
 	time (&rawtime);
 	timeinfo = localtime(&rawtime);
-
 	strftime(buffer,80,"%I:%M:%S",timeinfo);
 	string date(buffer);
 
+	//only proxy connection if a connection exists - e.g. no errors encountered before
+	if(proceed){
+		//setup scaffolding for threads
+		pthread_mutex_init(&signalLock, NULL);
+		pthread_attr_init(&attr1);
+		pthread_attr_setdetachstate(&attr1, PTHREAD_CREATE_JOINABLE);
+		pthread_attr_init(&attr2);
+		pthread_attr_setdetachstate(&attr2, PTHREAD_CREATE_JOINABLE);
 
-	volatile bool signal = true;
-	pthread_mutex_t signalLock;
+		clientToServerArgs.keepLooping = &signal;
+		clientToServerArgs.signalLock = &signalLock;
+		clientToServerArgs.source_fd = handlerArgs->connection_fd;
+		clientToServerArgs.dest_fd = serverFd;
+		clientToServerArgs.bytesTotal = &clientToServerBytes;
 
-	pthread_mutex_init(&signalLock, NULL);
+		serverToClientArgs.keepLooping = &signal;
+		serverToClientArgs.signalLock = &signalLock;
+		serverToClientArgs.source_fd = serverFd;
+		serverToClientArgs.dest_fd = handlerArgs->connection_fd;
+		serverToClientArgs.bytesTotal = &serverToClientBytes;
 
-	pthread_t clientToServer;
-	pthread_attr_t attr1;
-	pthread_attr_init(&attr1);
-	pthread_attr_setdetachstate(&attr1, PTHREAD_CREATE_JOINABLE);
+		//create threads to forward traffic
+		pthread_create(&clientToServer, &attr1, connectSockets, (void*)(&clientToServerArgs));
+		pthread_create(&serverToClient, &attr2, connectSockets, (void*)(&serverToClientArgs));
 
-	pthread_t serverToClient;
-	pthread_attr_t attr2;
-	pthread_attr_init(&attr2);
-	pthread_attr_setdetachstate(&attr2, PTHREAD_CREATE_JOINABLE);
+		//wait for threads to exit - when the connection ends
+		pthread_join(clientToServer, &status);
+		pthread_join(serverToClient, &status);
 
-	struct communicator clientToServerArgs;
-	int clientToServerBytes = 0;
-	clientToServerArgs.keepLooping = &signal;
-	clientToServerArgs.signalLock = &signalLock;
-	clientToServerArgs.source_fd = handlerArgs->connection_fd;
-	clientToServerArgs.dest_fd = serverFd;
-	clientToServerArgs.bytesTotal = &clientToServerBytes;
+		//log this connection
+		sprintf(line, "%s %s %i %s %i %i", date.c_str(), clientSrcIp.c_str(), clientSrcPort, clientDestIp.c_str(), clientDstPort, clientToServerBytes + serverToClientBytes);
+		log(string(line));
 
-	struct communicator serverToClientArgs;
-	int serverToClientBytes = 0;
-	serverToClientArgs.keepLooping = &signal;
-	serverToClientArgs.signalLock = &signalLock;
-	serverToClientArgs.source_fd = serverFd;
-	serverToClientArgs.dest_fd = handlerArgs->connection_fd;
-	serverToClientArgs.bytesTotal = &serverToClientBytes;
-
-	pthread_create(&clientToServer, &attr1, connectSockets, (void*)(&clientToServerArgs));
-	pthread_create(&serverToClient, &attr2, connectSockets, (void*)(&serverToClientArgs));
-
-	void* status;
-	pthread_join(clientToServer, &status);
-	pthread_join(serverToClient, &status);
-
-	char line[200];
-	sprintf(line, "%s %s %i %s %i %i", date.c_str(), clientSrcIp.c_str(), clientSrcPort, clientDestIp.c_str(), clientDstPort, clientToServerBytes + serverToClientBytes);
-
-	cout << "Logging: "<< line << endl;
-
-	log(string(line));
-
+		close(serverFd);
+	} else{
+		cout << "Error proxying connection"<<endl;
+	}
 	close(handlerArgs->connection_fd);
-	close(serverFd);
 	pthread_exit(NULL);
 }
 
@@ -242,10 +239,9 @@ int TransparentProxy::runProxy(){
 	//need to listen on the clientSide ip address
 	//any connections will be handled directly by a spawned thread
 	int socket_fd, status, new_connection_fd, rc, thread_ids = 0;
+	char service[100], iptablesBuffer[200];
 
-	list<pthread_t*> threads;
 	struct sockaddr_in server_addr;
-	char service[100];
 	sprintf(service, "%i", clientSidePort);
 
 	//setup struct to create socket
@@ -285,7 +281,7 @@ int TransparentProxy::runProxy(){
 	}
 
 
-	char iptablesBuffer[200];
+	//write iptables rule to DNAT all traffic on eth1 to this process
 	memset(iptablesBuffer, 0 , 200);
 	sprintf(iptablesBuffer, "iptables -t nat -A PREROUTING -p tcp -i eth1 -j DNAT --to-destination %s:%i", clientSide.c_str(), clientSidePort);
 	cout << "Writing iptables rule: "<<iptablesBuffer<<endl;
@@ -328,8 +324,6 @@ int TransparentProxy::runProxy(){
 			cout << "Error creating thread: "<<thread_ids<<endl;
 			return -1;
 		}
-		thread_ids++;
-		threads.push_back(current_connection_thread);
 	}
 	return 0;
 }
