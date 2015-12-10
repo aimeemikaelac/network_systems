@@ -6,7 +6,7 @@
 # Sept. 20, 2015
 ###
 TARGET		:= transparentproxy
-SRCS		:= TransparentProxy.cpp ConcurrentQueue.cpp
+SRCS		:= TransparentProxy.cpp
 CXXFLAGS	:=
 LDLIBS		:= -lpthread
 OBJS		:= $(SRCS:.cpp=.o)
