@@ -43,7 +43,6 @@
 #define MAX_REQUEST_SIZE 8192
 
 struct workerArgs{
-	ConcurrentQueue *workQueue;
 	std::string serverSide;
 	int clientConnectionFd;
 };

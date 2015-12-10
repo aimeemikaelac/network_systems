@@ -203,7 +203,7 @@ static void* handleConnection(void *handlerArgsStruct){
 	pthread_join(serverToClient, &status);
 
 	char line[200];
-	sprintf(line, "%s %s %i %s %i", date.c_str(), clientSrcIp.c_str(), clientSrcPort, clientDestIp.c_str(), clientDstPort, clientToServerBytes + serverToClientBytes);
+	sprintf(line, "%s %s %i %s %i %i", date.c_str(), clientSrcIp.c_str(), clientSrcPort, clientDestIp.c_str(), clientDstPort, clientToServerBytes + serverToClientBytes);
 
 	log(string(line));
 
